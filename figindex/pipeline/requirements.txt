@@ -1,0 +1,10 @@
+pymupdf>=1.23.0
+doclayout-yolo>=0.0.2
+kiwipiepy>=0.17.0
+qdrant-client>=1.8.0
+google-genai>=0.1.0
+openai>=1.14.0
+pydantic>=2.6.0
+python-dotenv>=1.0.1
+Pillow>=10.2.0
+

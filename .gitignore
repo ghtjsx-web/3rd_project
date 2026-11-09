@@ -1,0 +1,25 @@
+# secrets (모든 폴더의 .env 제외)
+.env
+.env.*
+!.env.example
+
+# data (모든 위치의 data 폴더 내용 제외, .gitkeep만 유지)
+**/data/**
+!**/data/**/
+!**/data/**/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# node
+node_modules/
+.next/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
