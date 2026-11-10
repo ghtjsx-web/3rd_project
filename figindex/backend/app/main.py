@@ -65,7 +65,10 @@ QDRANT_LOCAL_PATH = os.getenv("QDRANT_LOCAL_PATH", os.path.join(DATA_DIR, "qdran
 CACHE_DIR = os.getenv("CACHE_DIR", os.path.join(DATA_DIR, "cache"))
 
 # CORS Domains
-raw_cors = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,*")
+raw_cors = os.getenv(
+    "CORS_ORIGINS",
+    "https://figindex-frontend.onpod.ai,http://localhost:3000,http://127.0.0.1:3000,*"
+)
 ALLOWED_CORS_ORIGINS = [origin.strip() for origin in raw_cors.split(",") if origin.strip()]
 
 # CORS Middleware (Frontend communication)

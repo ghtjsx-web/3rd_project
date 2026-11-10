@@ -54,10 +54,17 @@ export default function ElementDetailPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const isApiUrlMissing = !backendUrl.trim();
 
   useEffect(() => {
     if (!elementId) return;
+
+    if (isApiUrlMissing) {
+      setError("API 주소 미설정: NEXT_PUBLIC_API_URL 환경변수가 지정되지 않았습니다.");
+      setLoading(false);
+      return;
+    }
 
     async function fetchElementDetail() {
       try {

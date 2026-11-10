@@ -80,9 +80,12 @@ export default function Home() {
   const [selectedForCompare, setSelectedForCompare] = useState<VisualElement[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  // NEXT_PUBLIC_API_URL로 백엔드 주소 단일화 (미설정 시 조용히 넘기지 않고 경고)
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const isApiUrlMissing = !backendUrl.trim();
 
   async function fetchHealth() {
+    if (isApiUrlMissing) return;
     try {
       const healthRes = await fetch(`${backendUrl}/health`);
       if (healthRes.ok) {
@@ -95,6 +98,7 @@ export default function Home() {
   }
 
   async function fetchFilterOptions() {
+    if (isApiUrlMissing) return;
     try {
       const res = await fetch(`${backendUrl}/api/filter-options`);
       if (res.ok) {
@@ -113,6 +117,11 @@ export default function Home() {
     company = selectedCompany,
     date = selectedDate
   ) {
+    if (isApiUrlMissing) {
+      setError("API 주소 미설정: NEXT_PUBLIC_API_URL 환경변수가 설정되지 않았습니다.");
+      setLoading(false);
+      return;
+    }
     const startTime = performance.now();
     try {
       setLoading(true);
@@ -203,22 +212,28 @@ export default function Home() {
         <div className="flex flex-wrap items-center gap-2 text-sm bg-white p-3 rounded-xl shadow-sm border">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Frontend: OK (Port 3000)
+            Frontend: OK
           </div>
 
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-              health?.status === "ok"
+              isApiUrlMissing
+                ? "bg-rose-100 text-rose-800 border-rose-300 font-bold"
+                : health?.status === "ok"
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : "bg-rose-50 text-rose-700 border-rose-200"
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                health?.status === "ok" ? "bg-emerald-500" : "bg-rose-500"
+                isApiUrlMissing
+                  ? "bg-rose-600 animate-ping"
+                  : health?.status === "ok"
+                  ? "bg-emerald-500"
+                  : "bg-rose-500"
               }`}
             ></span>
-            Backend: {health?.status === "ok" ? "Connected (Port 8000)" : "Disconnected"}
+            Backend: {isApiUrlMissing ? "API 주소 미설정" : health?.status === "ok" ? "Connected" : "Disconnected"}
           </div>
 
           <div
@@ -443,12 +458,25 @@ export default function Home() {
       </section>
 
       {/* Error Notice */}
-      {error && (
+      {isApiUrlMissing ? (
+        <div className="mb-6 p-5 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-900 shadow-sm flex items-start gap-3">
+          <div className="w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5">!</div>
+          <div>
+            <h3 className="font-bold text-base mb-1">API 주소 미설정 오류</h3>
+            <p className="text-xs text-rose-700 leading-relaxed mb-2">
+              프론트엔드 빌드 환경변수 <code className="bg-rose-100 px-1.5 py-0.5 rounded font-mono font-bold">NEXT_PUBLIC_API_URL</code> 이 지정되지 않아 백엔드 서버와 통신할 수 없습니다.
+            </p>
+            <p className="text-xs text-rose-600">
+              배포 시 <code className="bg-rose-100 px-1.5 py-0.5 rounded font-mono">--env NEXT_PUBLIC_API_URL=https://figindex-api.onpod.ai</code> 를 주입해 주세요.
+            </p>
+          </div>
+        </div>
+      ) : error ? (
         <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm">
           <p className="font-bold">안내:</p>
           <p>{error}</p>
         </div>
-      )}
+      ) : null}
 
       {/* Results Header with Search Latency Badge */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
