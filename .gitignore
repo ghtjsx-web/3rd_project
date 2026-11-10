@@ -1,25 +1,71 @@
-# secrets (모든 폴더의 .env 제외)
+# ==============================================================================
+# Environment & Secrets (모든 디렉터리의 민감한 .env 파일 제외, .env.example은 보존)
+# ==============================================================================
 .env
 .env.*
+*.env
 !.env.example
+!**/.env.example
 
-# data (모든 위치의 data 폴더 내용 제외, .gitkeep만 유지)
+# ==============================================================================
+# Vector DB & Heavy Storage (Qdrant 스토리지 및 캐시)
+# ==============================================================================
+qdrant_storage/
+qdrant_data/
+**/qdrant_storage/**
+**/qdrant_data/**
+
+# 대용량 데이터 및 모델 캐시 (폴더 유지를 위한 .gitkeep만 추적)
 **/data/**
 !**/data/**/
 !**/data/**/.gitkeep
+**/model_cache/**
+!**/model_cache/**/.gitkeep
+**/crops/**
+!**/crops/**/.gitkeep
+**/pdfs/**
+!**/pdfs/**/.gitkeep
 
-# python
+# ==============================================================================
+# Python & Virtual Environments
+# ==============================================================================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
 .venv/
 venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
 
-# node
+# ==============================================================================
+# Node.js & Frontend (Next.js / React)
+# ==============================================================================
 node_modules/
 .next/
+out/
+build/
+dist/
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# os / editor
+# ==============================================================================
+# OS & Editor Files
+# ==============================================================================
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo
+*.log

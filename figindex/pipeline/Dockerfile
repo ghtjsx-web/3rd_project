@@ -24,8 +24,8 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy pipeline scripts
-COPY init_collection.py run_index.py ./
+# Copy all pipeline scripts
+COPY *.py ./
 
 CMD ["python", "run_index.py"]
 
