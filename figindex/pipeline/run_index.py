@@ -1,13 +1,20 @@
 import os
 import sys
 import argparse
+from collections import defaultdict
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional, Set
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from orchestrator import ExtractionPipelineOrchestrator
+from orchestrator import ExtractionPipelineOrchestrator, parse_filename
+
+
+def get_doc_type_for_file(pdf_path: Path) -> str:
+    """파일명으로부터 문서 종류(doc_type)를 추출하며, 해석 실패 시 REPORT로 취급합니다."""
+    parsed = parse_filename(pdf_path.name)
+    return parsed["doc_type"] if parsed else "REPORT"
 
 
 def seed_cache_from_qdrant(orchestrator: ExtractionPipelineOrchestrator):
@@ -57,41 +64,56 @@ def estimate_pipeline_calls(
     orchestrator: ExtractionPipelineOrchestrator,
     target_files: List[Path],
     force: bool = False
-) -> Tuple[int, int, int]:
+) -> Tuple[int, int, int, Dict[str, Dict[str, int]]]:
     """
-    실행 전 대상 PDF들을 분석하여 Gemini API의 예상 호출 횟수를 계산합니다.
-    반환값: (이미 색인된 파일 수, 신규 색인 파일 수, 예상 Gemini API 호출 횟수)
+    실행 전 대상 PDF들을 분석하여 전체 및 종류별 Gemini API 예상 호출 횟수를 계산합니다.
+    반환값: (이미 색인된 파일 수, 신규 색인 파일 수, 예상 Gemini API 호출 횟수, 종류별 통계 dict)
     """
     already_indexed = 0
     new_files = 0
     estimated_api_calls = 0
+    type_stats: Dict[str, Dict[str, int]] = defaultdict(lambda: {"total": 0, "new": 0, "est_calls": 0})
 
-    print("\n[사전 분석] 리포트 파일 상태 및 캐시 점검 중...")
+    print("\n[사전 분석] 문서 파일 상태 및 캐시 점검 중...")
     for pdf_path in target_files:
+        doc_type = get_doc_type_for_file(pdf_path)
+        type_stats[doc_type]["total"] += 1
+
         is_indexed = orchestrator.is_document_already_indexed(pdf_path.name)
         if is_indexed and not force:
             already_indexed += 1
         else:
             new_files += 1
             # 각 PDF당 평균 3~4개의 도표가 추출된다고 산출
-            estimated_api_calls += 3
+            est_for_file = 3
+            estimated_api_calls += est_for_file
+            type_stats[doc_type]["new"] += 1
+            type_stats[doc_type]["est_calls"] += est_for_file
 
-    return already_indexed, new_files, estimated_api_calls
+    return already_indexed, new_files, estimated_api_calls, dict(type_stats)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FigIndex Batch Indexing Pipeline Runner (up to 50 reports)")
-    parser.add_argument("--limit", type=int, default=50, help="Maximum number of PDF documents to process (default: 50)")
+    parser = argparse.ArgumentParser(description="FigIndex Batch Indexing Pipeline Runner")
+    parser.add_argument("--limit", type=int, default=200, help="Maximum number of PDF documents to process (default: 200)")
+    parser.add_argument("--types", type=str, default="", help="Comma-separated document types to process (e.g., REPORT,PUBLIC_REPORT,IR,PAPER). Default: all")
+    parser.add_argument("--max-pages", type=int, default=12, help="Maximum pages to inspect per PDF (default: 12)")
+    parser.add_argument("--max-elements", type=int, default=4, help="Maximum visual elements to extract per PDF (default: 4)")
     parser.add_argument("--force", action="store_true", help="Force re-indexing even if document already exists")
     parser.add_argument("--dry-run", action="store_true", help="Calculate and print expected API calls without running indexing")
     args = parser.parse_args()
 
+    allowed_types: Optional[Set[str]] = None
+    if args.types.strip():
+        allowed_types = {t.strip().upper() for t in args.types.split(",") if t.strip()}
+
     data_pdfs_dir = Path(os.getenv("PDFS_DIR", "/data/pdfs"))
 
     print("=" * 68)
-    print(" FigIndex 50건 리포트 도표·차트 자동 색인 일괄 실행 파이프라인")
-    print(f" - 리포트 저장 폴더: {data_pdfs_dir}")
-    print(f" - 최대 처리 리포트 수: {args.limit}건")
+    print(" FigIndex 문서 도표·차트 자동 색인 일괄 실행 파이프라인")
+    print(f" - 문서 저장 폴더: {data_pdfs_dir}")
+    print(f" - 대상 문서 종류: {', '.join(sorted(allowed_types)) if allowed_types else '전체 (ALL)'}")
+    print(f" - 최대 처리 문서 수: {args.limit}건 (문서당 최대 {args.max_pages}p / 도표 {args.max_elements}개)")
     print("=" * 68)
 
     if not data_pdfs_dir.exists():
@@ -102,7 +124,10 @@ def main():
     pdf_files = [p for p in pdf_files if not p.name.startswith("sample_")]
 
     total_found = len(pdf_files)
-    print(f"[정보] 리포트 PDF 총 {total_found}건 발견")
+    if allowed_types is not None:
+        pdf_files = [p for p in pdf_files if get_doc_type_for_file(p) in allowed_types]
+
+    print(f"[정보] 전체 PDF {total_found}건 중 선택된 문서 총 {len(pdf_files)}건 발견")
 
     if not pdf_files:
         print("[안내] 처리할 PDF 파일이 없습니다.")
@@ -116,16 +141,24 @@ def main():
     cached_items_count = len(orchestrator.extractor.cache)
 
     # 2. 사전 예상 호출 횟수 계산
-    indexed_cnt, new_cnt, est_calls = estimate_pipeline_calls(orchestrator, target_files, force=args.force)
+    indexed_cnt, new_cnt, est_calls, type_stats = estimate_pipeline_calls(
+        orchestrator, target_files, force=args.force
+    )
 
     print("\n" + "=" * 68)
     print(" [사전 진단 보고서] Gemini API 예상 호출 횟수")
     print("=" * 68)
-    print(f"  * 전체 대상 리포트 파일: {len(target_files)}건")
-    print(f"  * 기존 색인 완료된 리포트: {indexed_cnt}건 (자동 스킵 / API 호출 0회)")
-    print(f"  * 신규 처리 대상 리포트: {new_cnt}건")
+    print(f"  * 전체 대상 문서 파일: {len(target_files)}건")
+    print(f"  * 기존 색인 완료된 문서: {indexed_cnt}건 (자동 스킵 / API 호출 0회)")
+    print(f"  * 신규 처리 대상 문서: {new_cnt}건")
     print(f"  * 현재 보유 중인 도표 캐시: {cached_items_count}건")
-    print(f"  * 예상 Gemini API 호출 횟수: 약 {est_calls}회 (도표당 1회, 캐시 적중 시 자동 0회)")
+    print("  * 종류별 상세 현황:")
+    for dtype, stat in sorted(type_stats.items()):
+        print(
+            f"      - {dtype:<14}: 전체 {stat['total']:>3}건 "
+            f"(신규 {stat['new']:>3}건 / 예상 Gemini 호출 약 {stat['est_calls']:>4}회)"
+        )
+    print(f"  * 총 예상 Gemini API 호출 횟수: 약 {est_calls}회 (도표당 1회, 캐시 적중 시 자동 0회)")
     print(f"  * 예상 소요 시간: 약 {est_calls * 2.5 / 60:.1f}분 (무료 티어 15 RPM 준수 딜레이 2.0s 포함)")
     print("=" * 68 + "\n")
 
@@ -134,7 +167,7 @@ def main():
         return
 
     # 3. 일괄 색인 파이프라인 시작
-    print(f"[시작] {len(target_files)}건의 리포트 일괄 색인을 시작합니다...\n")
+    print(f"[시작] {len(target_files)}건의 문서 일괄 색인을 시작합니다...\n")
 
     total_indexed_elements = 0
     skipped_count = 0
@@ -142,16 +175,20 @@ def main():
 
     for idx, pdf_path in enumerate(target_files, 1):
         print(f"------------------------------------------------------------")
-        print(f"[{idx}/{len(target_files)}] 리포트 처리 중: {pdf_path.name}")
+        print(f"[{idx}/{len(target_files)}] 문서 처리 중: {pdf_path.name}")
         print(f"------------------------------------------------------------")
 
         if not args.force and orchestrator.is_document_already_indexed(pdf_path.name):
-            print(f"  [스킵] '{pdf_path.name}' 리포트는 이미 Qdrant에 색인되어 있습니다. (--force로 강제 재색인 가능)")
+            print(f"  [스킵] '{pdf_path.name}' 문서는 이미 Qdrant에 색인되어 있습니다. (--force로 강제 재색인 가능)")
             skipped_count += 1
             continue
 
         try:
-            elements = orchestrator.process_pdf(pdf_path, max_pages=12, max_elements_per_pdf=4)
+            elements = orchestrator.process_pdf(
+                pdf_path,
+                max_pages=args.max_pages,
+                max_elements_per_pdf=args.max_elements,
+            )
             total_indexed_elements += len(elements)
             processed_count += 1
             print(f"  [완료] '{pdf_path.name}' -> {len(elements)}개 도표 색인 완료.")
@@ -162,9 +199,9 @@ def main():
     print("\n" + "=" * 68)
     print(" FigIndex 일괄 색인 파이프라인 최종 결과")
     print("=" * 68)
-    print(f"  - 대상 리포트: {len(target_files)}건")
-    print(f"  - 신규 처리 리포트: {processed_count}건")
-    print(f"  - 스킵된 기존 리포트: {skipped_count}건")
+    print(f"  - 대상 문서: {len(target_files)}건")
+    print(f"  - 신규 처리 문서: {processed_count}건")
+    print(f"  - 스킵된 기존 문서: {skipped_count}건")
     print(f"  - 이번 실행에서 신규 색인된 도표: {total_indexed_elements}개")
 
     try:

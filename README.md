@@ -38,10 +38,23 @@ copy .env.example .env
 ```
 > `.env` 파일을 열고 발급받은 API 키(`GEMINI_API_KEY`, `OPENAI_API_KEY`)를 입력합니다.
 
-### Step 3. ⭐️ Docker 한 줄 실행 (Frontend + Backend + Qdrant)
-```bash
-docker compose up -d --build
-```
+### Step 3. ⭐️ 실행 모드별 Docker 명령 (`figindex/` 폴더 기준)
+
+- **로컬 개발 실행 (Hot Reload)**:
+  ```bash
+  docker compose up -d -V
+  ```
+- **예전 빌드 캐시 초기화 후 재실행**:
+  ```bash
+  docker compose build --no-cache frontend && docker compose up -d -V
+  ```
+- **로컬 프로덕션 모드 확인 (소스 마운트 없이 빌드 결과만 실행)**:
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d --build
+  ```
+- **Onpod 배포**:
+  - `figindex/frontend/Dockerfile`은 `ARG NEXT_PUBLIC_API_URL="https://figindex-api.onpod.ai"` 기본값을 유지하므로 기존 Onpod 배포 방식 그대로 빌드됩니다(필요 시 `--build-arg NEXT_PUBLIC_API_URL=https://figindex-api.onpod.ai` 명시).
+  - `figindex/backend/Dockerfile`은 단독 이미지 배포용 `QDRANT_MODE=local` 설정으로 빌드됩니다.
 > ※ `pipeline` 컨테이너는 필요 시에만 구동되도록 분리(`profiles: ["index"]`)되어 있어, 평소에는 리소스를 차지하지 않고 웹 서비스 3개만 가볍게 실행됩니다.
 
 ---
@@ -68,13 +81,21 @@ docker compose run --rm pipeline python init_collection.py
 ```
 > 성공 시 `[Success] FigIndex collection 'figindex_elements' and payload indices are ready!` 메시지가 출력됩니다.
 
-### 4.2 색인 파이프라인 실행 (테스트 러너)
+### 4.2 로컬 임베디드(`qdrant_local`) → Qdrant 서버 데이터 이전 (`figindex/` 폴더 기준)
+기존 `data/qdrant_local` 데이터를 Docker Qdrant 서버(`http://qdrant:6333`)로 이전할 때 실행합니다(원본 폴더는 삭제/수정되지 않으며, 대상에 이미 컬렉션이 있을 때 덮어쓰려면 `--force` 옵션을 추가):
+```bash
+docker compose stop backend
+docker compose run --rm pipeline python /scripts/local_to_server.py
+docker compose up -d backend
+```
+
+### 4.3 색인 파이프라인 실행 (테스트 러너)
 테스트용 PDF를 `figindex/data/pdfs/`에 넣은 뒤 색인을 실행합니다:
 ```bash
 docker compose run --rm pipeline python run_index.py
 ```
 
-### 4.3 서비스 종료
+### 4.4 서비스 종료
 ```bash
 docker compose down
 ```

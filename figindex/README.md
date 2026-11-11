@@ -34,11 +34,28 @@ PDF 문서(리포트, 논문, 보고서 등)에서 줄글은 건너뛰고, 핵�
    ```
    `.env` 파일을 열고 발급받은 API 키(`GEMINI_API_KEY`, `OPENAI_API_KEY`)를 입력합니다.
 
-3. **컨테이너 빌드 및 전체 실행**:
+3. **로컬 개발 실행 (Hot Reload 모드)**:
    ```bash
-   docker compose up --build
+   docker compose up -d -V
    ```
+   - 프론트엔드는 `npm run dev` + `WATCHPACK_POLLING=true`, 백엔드는 `uvicorn --reload --reload-dir /app/app --reload-dir /app/shared` + `WATCHFILES_FORCE_POLLING=true`로 실행되어 코드 수정 시 수 초 내 자동 반영됩니다.
+   - 예전 빌드/익명 볼륨 캐시가 남아 있을 때 초기화 명령:
+     ```bash
+     docker compose build --no-cache frontend && docker compose up -d -V
+     ```
    *(평소 실행 시: `pipeline` 컨테이너는 프로파일(`profiles: ["index"]`)로 분리되어 있으므로 `qdrant`, `backend`, `frontend` 3개 서비스만 자동으로 뜹니다.)*
+
+4. **로컬 프로덕션 모드 확인 (`docker-compose.prod.yml`)**:
+   소스 바인드 마운트 없이 이미지에 빌드된 결과만으로 프로덕션 환경을 검증합니다:
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   # 확인 종료 후
+   docker compose -f docker-compose.prod.yml down
+   ```
+
+5. **Onpod 배포**:
+   - `frontend/Dockerfile`의 `ARG NEXT_PUBLIC_API_URL="https://figindex-api.onpod.ai"` 기본값을 유지하므로 Onpod에서 기존 방식 그대로 빌드·배포하면 됩니다(또는 명시적으로 `--build-arg NEXT_PUBLIC_API_URL=https://figindex-api.onpod.ai` 전달).
+   - `backend/Dockerfile`은 단독 이미지 배포 시 `QDRANT_MODE=local`과 `/data` 내장 데이터를 사용합니다.
 
 ---
 
@@ -63,6 +80,16 @@ Qdrant 벡터 DB에 Dense(1536차원) + Sparse(BM25) 및 Payload 인덱스를 �
 docker compose run --rm pipeline python init_collection.py
 ```
 성공 시 `[Success] FigIndex collection 'figindex_elements' and payload indices are ready!` 메시지가 출력되며, [http://localhost:6333/dashboard](http://localhost:6333/dashboard)에서 컬렉션을 확인할 수 있습니다.
+
+### 4.1 로컬 임베디드(`qdrant_local`) → Qdrant 서버 데이터 이전
+로컬 파일 모드(`/data/qdrant_local`)에 저장된 기존 색인 데이터를 Docker Qdrant 서버(`http://qdrant:6333`)로 옮길 때 사용합니다(`docker-compose.yml`에서 `../scripts:/scripts`가 마운트되어 있으며 원본 폴더는 수정하지 않습니다):
+
+```bash
+docker compose stop backend
+docker compose run --rm pipeline python /scripts/local_to_server.py
+docker compose up -d backend
+```
+*(대상 서버에 이미 컬렉션이 있을 때 덮어쓰려면 `--force` 옵션을 함께 전달하세요.)*
 
 ---
 

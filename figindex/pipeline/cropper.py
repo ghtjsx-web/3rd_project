@@ -166,9 +166,116 @@ class PDFCropper:
                     is_dup = True
                     break
             if not is_dup:
+                # 3. [추가 규칙] 출처·주석 줄 합치기 (본 박스 바로 아래 3% 이내 출처/주석 포함)
+                cand["bbox"] = self._expand_box_with_source_notes(page, cand["bbox"])
                 filtered.append(cand)
 
         return filtered
+
+    @staticmethod
+    def _horizontal_overlap_ratio(box_x0: float, box_x1: float, line_x0: float, line_x1: float) -> float:
+        """텍스트 줄 너비(또는 박스 너비) 대비 본 박스와 가로로 겹치는 비율(0~1)을 계산합니다."""
+        inter = max(0.0, min(box_x1, line_x1) - max(box_x0, line_x0))
+        line_w = max(line_x1 - line_x0, 1e-6)
+        box_w = max(box_x1 - box_x0, 1e-6)
+        # 줄 너비 기준 겹침과 박스 너비 기준 겹침 중 큰 값 사용 (짧은 '자료:' 줄도 50% 이상 겹침 판정)
+        return max(inter / line_w, inter / box_w)
+
+    def _expand_box_with_source_notes(
+        self,
+        page: fitz.Page,
+        norm_box: Tuple[float, float, float, float],
+    ) -> Tuple[float, float, float, float]:
+        """
+        본 박스 바로 아래(페이지 높이 3% 이내)에서 page.get_text("dict")로 텍스트 줄을 읽어
+        본 박스와 가로로 50% 이상 겹치고 "자료", "주:", "주)", "Source" 로 시작하는 줄과
+        이어지는 주석 줄까지 박스에 포함시킵니다.
+        """
+        rect = page.rect
+        pw, ph = rect.width, rect.height
+        if pw <= 0 or ph <= 0:
+            return norm_box
+
+        ymin, xmin, ymax, xmax = norm_box
+        bx0, by0, bx1, by1 = xmin * pw, ymin * ph, xmax * pw, ymax * ph
+
+        # page.get_text("dict")에서 모든 텍스트 줄 추출
+        text_dict = page.get_text("dict")
+        lines = []
+        for block in text_dict.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = line.get("spans", [])
+                line_text = "".join(s.get("text", "") for s in spans).strip()
+                lx0, ly0, lx1, ly1 = line.get("bbox", (0, 0, 0, 0))
+                lines.append({
+                    "x0": lx0,
+                    "y0": ly0,
+                    "x1": lx1,
+                    "y1": ly1,
+                    "text": line_text,
+                })
+
+        # 위에서 아래 순서로 정렬
+        lines.sort(key=lambda l: (l["y0"], l["x0"]))
+
+        source_prefix_re = re.compile(r"^(?:자료|주\s*:|주\s*\)|Source\b)", re.IGNORECASE)
+        max_gap = ph * 0.03  # 페이지 높이 3% 이내
+
+        found_note = False
+        cur_y1 = by1
+        cur_x0, cur_x1 = bx0, bx1
+        prev_line_h = 12.0
+
+        for line in lines:
+            lx0, ly0, lx1, ly1, ltext = line["x0"], line["y0"], line["x1"], line["y1"], line["text"]
+
+            # 본 박스보다 위쪽에 있는 줄은 건너뜀 (미세한 2pt 겹침은 허용)
+            if ly0 < by1 - 2.0:
+                continue
+
+            overlap_ratio = self._horizontal_overlap_ratio(bx0, xmax * pw, lx0, lx1)
+
+            if not found_note:
+                # 아직 시작 줄을 못 찾은 경우: 본 박스 바로 아래 3% 이내 + 가로 50% 이상 겹침 + 출처/주석 접두어
+                if ly0 - by1 > max_gap:
+                    break
+                if not ltext or overlap_ratio < 0.5:
+                    continue
+                if source_prefix_re.match(ltext):
+                    found_note = True
+                    cur_y1 = max(cur_y1, ly1)
+                    cur_x0 = min(cur_x0, lx0)
+                    cur_x1 = max(cur_x1, lx1)
+                    prev_line_h = max(ly1 - ly0, 8.0)
+            else:
+                # 이미 출처/주석 줄이 시작된 뒤 이어지는 줄 검사
+                # 1) 빈 줄이면 멈춤
+                if not ltext:
+                    break
+                # 2) 직전 줄과의 세로 간격이 줄 높이의 1.2배(또는 페이지 1.5%)를 초과하면 새 문단/빈 줄로 보고 멈춤
+                gap = ly0 - cur_y1
+                if gap > max(prev_line_h * 1.2, ph * 0.015):
+                    break
+                # 3) 가로로 본 박스와 50% 이상 겹치지 않으면 멈춤
+                if overlap_ratio < 0.5:
+                    break
+                # 4) 다음 본문/제목 패턴(예: 숫자 목차나 대제목 등)으로 보이지 않는 연속 줄이면 포함
+                cur_y1 = max(cur_y1, ly1)
+                cur_x0 = min(cur_x0, lx0)
+                cur_x1 = max(cur_x1, lx1)
+                prev_line_h = max(ly1 - ly0, 8.0)
+
+        if not found_note:
+            return norm_box
+
+        return (
+            ymin,
+            max(0.0, cur_x0 / pw),
+            min(1.0, cur_y1 / ph),
+            min(1.0, cur_x1 / pw),
+        )
 
     def crop_and_save(
         self,

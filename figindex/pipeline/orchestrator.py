@@ -1,11 +1,16 @@
 import os
 import re
 import math
+import atexit
 import hashlib
+import logging
+import threading
 import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 import fitz  # PyMuPDF
 from kiwipiepy import Kiwi
@@ -26,53 +31,296 @@ except ImportError:
     from app.pipeline.extractor import MultimodalExtractor
 
 
-DOC_TYPE_CODE_MAP = {
+DOC_TYPE_CODE_MAP: Dict[str, str] = {
     "RPT": "REPORT",
     "PUB": "PUBLIC_REPORT",
+    "PAP": "PAPER",
+    "IR": "IR",
 }
 
+# 증권사 별칭 -> 정식 명칭 매핑 사전 (known_brokers 20개 + 사명 변경 + 약칭/영문 포함)
+BROKER_ALIASES: Dict[str, str] = {
+    # 정식 명칭 (기존 known_brokers 20개 및 사명 변경 반영)
+    "IBK투자증권": "IBK투자증권",
+    "미래에셋증권": "미래에셋증권",
+    "신한투자증권": "신한투자증권",
+    "키움증권": "키움증권",
+    "하나증권": "하나증권",
+    "대신증권": "대신증권",
+    "KB증권": "KB증권",
+    "삼성증권": "삼성증권",
+    "NH투자증권": "NH투자증권",
+    "유안타증권": "유안타증권",
+    "한국투자증권": "한국투자증권",
+    "메리츠증권": "메리츠증권",
+    "교보증권": "교보증권",
+    "현대차증권": "현대차증권",
+    "한화투자증권": "한화투자증권",
+    "SK증권": "SK증권",
+    "유진투자증권": "유진투자증권",
+    "DB증권": "DB증권",
+    "iM증권": "iM증권",
+    "다올투자증권": "다올투자증권",
+    # 추가 증권사 정식 명칭
+    "LS증권": "LS증권",
+    "상상인증권": "상상인증권",
+    "신영증권": "신영증권",
+    "DS투자증권": "DS투자증권",
+    "BNK투자증권": "BNK투자증권",
+    "한양증권": "한양증권",
+    "부국증권": "부국증권",
+    "흥국증권": "흥국증권",
+    "케이프투자증권": "케이프투자증권",
+    "리딩투자증권": "리딩투자증권",
+    # 사명 변경 전 구 명칭 & 약칭 & 별칭
+    "DB금융투자": "DB증권",
+    "동부증권": "DB증권",
+    "하이투자증권": "iM증권",
+    "신한금융투자": "신한투자증권",
+    "하나금융투자": "하나증권",
+    "하나대투증권": "하나증권",
+    "미래에셋대우": "미래에셋증권",
+    "대우증권": "미래에셋증권",
+    "현대증권": "KB증권",
+    "KB투자증권": "KB증권",
+    "KTB투자증권": "다올투자증권",
+    "이베스트투자증권": "LS증권",
+    "이베스트증권": "LS증권",
+    "동양증권": "유안타증권",
+    "한화증권": "한화투자증권",
+    "HMC투자증권": "현대차증권",
+    "우리투자증권": "NH투자증권",
+    "LIG투자증권": "케이프투자증권",
+    "한투": "한국투자증권",
+    "한투증권": "한국투자증권",
+    "한국투자": "한국투자증권",
+    "IBK": "IBK투자증권",
+    "IBK투자": "IBK투자증권",
+    "미래에셋": "미래에셋증권",
+    "신한": "신한투자증권",
+    "신한투자": "신한투자증권",
+    "키움": "키움증권",
+    "하나": "하나증권",
+    "대신": "대신증권",
+    "KB": "KB증권",
+    "삼성": "삼성증권",
+    "NH": "NH투자증권",
+    "NH투자": "NH투자증권",
+    "유안타": "유안타증권",
+    "메리츠": "메리츠증권",
+    "메리츠종금증권": "메리츠증권",
+    "교보": "교보증권",
+    "현대차": "현대차증권",
+    "한화": "한화투자증권",
+    "한화투자": "한화투자증권",
+    "SK": "SK증권",
+    "유진": "유진투자증권",
+    "유진투자": "유진투자증권",
+    "DB": "DB증권",
+    "iM": "iM증권",
+    "IM증권": "iM증권",
+    "다올": "다올투자증권",
+    "다올투자": "다올투자증권",
+    "LS": "LS증권",
+    "상상인": "상상인증권",
+    "신영": "신영증권",
+    "DS": "DS투자증권",
+}
 
-def parse_new_filename(doc_name: str) -> Optional[Dict[str, Any]]:
-    """
-    새 PDF 파일명 형식({종류}_{YYYYMMDD}_{대상}_{출처}(_숫자).pdf)을 파싱합니다.
-    예: RPT_20261109_현대백화점_대신증권.pdf
-        RPT_20261106_삼성전자_키움증권_2.pdf
-        PUB_20261020_반도체수출동향_산업연구원.pdf
-    형식이 맞지 않으면 None을 반환합니다.
-    """
-    normalized = unicodedata.normalize("NFC", Path(doc_name).name).strip()
-    stem = re.sub(r"\.pdf$", "", normalized, flags=re.IGNORECASE).strip()
-    parts = stem.split("_")
+_BROKER_ALIASES_LOWER: Dict[str, str] = {k.lower(): v for k, v in BROKER_ALIASES.items()}
 
-    # 최소 4개 파트(종류, YYYYMMDD, 대상, 출처) 필요. 5번째 파트는 중복 접미사(_2, _3 등)
-    if len(parts) < 4:
-        return None
-    if len(parts) >= 5 and re.fullmatch(r"\d+", parts[-1]):
-        parts = parts[:-1]
-    if len(parts) != 4:
-        return None
 
-    kind_code, date_str, target, source_org = [p.strip() for p in parts]
-    doc_type = DOC_TYPE_CODE_MAP.get(kind_code.upper())
-    if not doc_type:
-        return None
-    if not re.fullmatch(r"\d{8}", date_str):
-        return None
+def normalize_broker_name(source: str) -> str:
+    """REPORT 문서의 출처(증권사)를 BROKER_ALIASES 기준으로 정식 명칭으로 변환합니다."""
+    cleaned = unicodedata.normalize("NFC", source).strip()
+    if cleaned in BROKER_ALIASES:
+        return BROKER_ALIASES[cleaned]
+    lower_key = cleaned.lower()
+    if lower_key in _BROKER_ALIASES_LOWER:
+        return _BROKER_ALIASES_LOWER[lower_key]
+    msg = f"[Warn] BROKER_ALIASES에 없는 REPORT 출처입니다 (원본 유지): '{cleaned}'"
+    logger.warning(msg)
+    print(msg)
+    return cleaned
 
+
+# 긴 접두어부터 순서대로 검사하기 위해 (접두어, doc_type) 튜플 리스트로 정의
+PREFIX_DOC_TYPE_RULES = [
+    ("슬라이드_IR_", "IR"),
+    ("통계보도자료_", "PUBLIC_REPORT"),
+    ("공공보고서_", "PUBLIC_REPORT"),
+    ("보도자료_", "PUBLIC_REPORT"),
+    ("보고서_", "PUBLIC_REPORT"),
+    ("리포트_", "PUBLIC_REPORT"),
+    ("논문_", "PAPER"),
+    ("RPT_", DOC_TYPE_CODE_MAP["RPT"]),
+    ("PUB_", DOC_TYPE_CODE_MAP["PUB"]),
+    ("PAP_", DOC_TYPE_CODE_MAP["PAP"]),
+    ("IR_", DOC_TYPE_CODE_MAP["IR"]),
+]
+
+# 형식 C: 구분자 없이 "{한글종류}{YYYYMMDD}{제목}_{출처}" 형태로 붙는 접두어 규칙
+COMPACT_PREFIX_DOC_TYPE_RULES = [
+    ("통계보도자료", "PUBLIC_REPORT"),
+    ("공공보고서", "PUBLIC_REPORT"),
+    ("보도자료", "PUBLIC_REPORT"),
+    ("보고서", "PUBLIC_REPORT"),
+    ("리포트", "PUBLIC_REPORT"),
+    ("논문", "PAPER"),
+]
+
+
+def _parse_date_digits(date_str: str) -> Optional[date]:
+    """4자리(YYYY), 6자리(YYYYMM), 8자리(YYYYMMDD) 숫자 문자열을 date로 변환합니다."""
+    if not re.fullmatch(r"\d{4}|\d{6}|\d{8}", date_str):
+        return None
     try:
-        pub_date = date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+        if len(date_str) == 4:
+            return date(int(date_str), 1, 1)
+        if len(date_str) == 6:
+            return date(int(date_str[:4]), int(date_str[4:6]), 1)
+        return date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
     except ValueError:
         return None
 
-    if not target or not source_org:
-        return None
 
+def parse_filename(doc_name: str) -> Optional[Dict[str, Any]]:
+    """
+    코드 형식(A), 한글 형식(B), 구분자 없는 한글 형식(C) PDF 파일명을 모두 해석합니다.
+      (A) {코드}_{날짜}_{대상}_{출처}(_숫자).pdf  (RPT, PUB, PAP, IR)
+      (B) {한글종류}_{날짜}_{주제}_{출처}(_숫자).pdf (슬라이드_IR, 통계보도자료, 공공보고서, 보도자료, 보고서, 리포트, 논문)
+      (C) {한글종류}{YYYYMMDD}{제목}_{출처}(_숫자).pdf (보고서, 리포트, 논문 등)
+    날짜는 4자리(YYYY -> 1월1일), 6자리(YYYYMM -> 1일), 8자리(YYYYMMDD)를 지원합니다.
+    반환: {"doc_type", "date", "target", "source"} 또는 None
+    """
+    normalized = unicodedata.normalize("NFC", Path(doc_name).name).strip()
+    stem = re.sub(r"\.pdf$", "", normalized, flags=re.IGNORECASE).strip()
+
+    # 1. 형식 (A), (B): 접두어 뒤에 "_" 구분자가 있는 경우
+    matched_doc_type = None
+    remainder = None
+    for prefix, doc_type in PREFIX_DOC_TYPE_RULES:
+        if stem.upper().startswith(prefix.upper()):
+            matched_doc_type = doc_type
+            remainder = stem[len(prefix):]
+            break
+
+    if matched_doc_type and remainder is not None:
+        parts = remainder.split("_")
+        # 최소 3개 파트(날짜, 대상/주제, 출처). 끝에 중복 번호(_2, _3 등)가 있으면 제거
+        if len(parts) >= 4 and re.fullmatch(r"\d+", parts[-1].strip()):
+            parts = parts[:-1]
+
+        if len(parts) < 3:
+            return None
+
+        date_str = parts[0].strip()
+        source = parts[-1].strip()
+        target = "_".join(p.strip() for p in parts[1:-1]).strip()
+
+        if not target or not source:
+            return None
+
+        parsed_date = _parse_date_digits(date_str)
+        if not parsed_date:
+            return None
+
+        if matched_doc_type == "REPORT":
+            source = normalize_broker_name(source)
+
+        return {
+            "doc_type": matched_doc_type,
+            "date": parsed_date,
+            "target": target,
+            "source": source,
+        }
+
+    # 2. 형식 (C): "{한글종류}{YYYYMMDD}{제목}_{출처}" (종류와 날짜 사이 구분자 없음)
+    for prefix, doc_type in COMPACT_PREFIX_DOC_TYPE_RULES:
+        if stem.startswith(prefix):
+            compact_rem = stem[len(prefix):]
+            if not re.match(r"^\d{8}", compact_rem):
+                continue
+
+            date_str = compact_rem[:8]
+            parsed_date = _parse_date_digits(date_str)
+            if not parsed_date:
+                return None
+
+            rest = compact_rem[8:]
+            if "_" not in rest:
+                return None
+
+            # 끝에 중복 번호(_2, _3 등)가 붙은 경우 마지막 "_" 기준 분리 전에 제거
+            if rest.count("_") >= 2:
+                base_part, maybe_dup = rest.rsplit("_", 1)
+                if re.fullmatch(r"\d+", maybe_dup.strip()):
+                    rest = base_part
+
+            target, source = rest.rsplit("_", 1)
+            target = target.strip()
+            source = source.strip()
+            if not target or not source:
+                return None
+
+            if doc_type == "REPORT":
+                source = normalize_broker_name(source)
+
+            return {
+                "doc_type": doc_type,
+                "date": parsed_date,
+                "target": target,
+                "source": source,
+            }
+
+    return None
+
+
+def parse_new_filename(doc_name: str) -> Optional[Dict[str, Any]]:
+    """파일명을 해석해 doc_type, publish_date, target, source_org를 반환합니다."""
+    res = parse_filename(doc_name)
+    if not res:
+        return None
     return {
-        "doc_type": doc_type,
-        "publish_date": pub_date,
-        "company": target,
-        "broker": source_org,
+        "doc_type": res["doc_type"],
+        "publish_date": res["date"],
+        "target": res["target"],
+        "source_org": res["source"],
     }
+
+
+_PIPELINE_QDRANT_CLIENTS: Dict[tuple, QdrantClient] = {}
+_PIPELINE_QDRANT_LOCK = threading.Lock()
+
+
+def get_pipeline_qdrant_client(qdrant_mode: str, qdrant_url: str, qdrant_local_path: str) -> QdrantClient:
+    """프로세스 내에서 동일 설정의 QdrantClient를 한 번만 생성해 재사용합니다."""
+    mode = (qdrant_mode or "server").lower()
+    key = (mode, qdrant_local_path if mode == "local" else qdrant_url)
+    with _PIPELINE_QDRANT_LOCK:
+        client = _PIPELINE_QDRANT_CLIENTS.get(key)
+        if client is None:
+            if mode == "local":
+                os.makedirs(qdrant_local_path, exist_ok=True)
+                client = QdrantClient(path=qdrant_local_path)
+            else:
+                client = QdrantClient(url=qdrant_url, timeout=10.0)
+            _PIPELINE_QDRANT_CLIENTS[key] = client
+        return client
+
+
+def _close_pipeline_qdrant_clients() -> None:
+    """프로세스 종료 시 열려 있는 파이프라인 QdrantClient를 안전하게 닫습니다."""
+    with _PIPELINE_QDRANT_LOCK:
+        for client in _PIPELINE_QDRANT_CLIENTS.values():
+            try:
+                client.close()
+            except Exception:
+                pass
+        _PIPELINE_QDRANT_CLIENTS.clear()
+
+
+atexit.register(_close_pipeline_qdrant_clients)
 
 
 class ExtractionPipelineOrchestrator:
@@ -87,10 +335,17 @@ class ExtractionPipelineOrchestrator:
         self.collection_name = os.getenv("QDRANT_COLLECTION", "figindex_elements")
 
         if self.qdrant_mode == "local":
-            os.makedirs(self.qdrant_local_path, exist_ok=True)
-            self.qdrant_client = QdrantClient(path=self.qdrant_local_path)
-        else:
-            self.qdrant_client = QdrantClient(url=self.qdrant_url, timeout=10.0)
+            warn_msg = (
+                f"[Warn] 파이프라인이 QDRANT_MODE=local로 실행됩니다 ({self.qdrant_local_path}). "
+                "로컬 모드에서 백엔드 서버가 실행 중일 때 파이프라인을 동시에 실행하면 "
+                "Qdrant 로컬 폴더 파일 잠금 충돌이 발생합니다. 백엔드를 중지하거나 QDRANT_MODE=server를 사용하세요."
+            )
+            logger.warning(warn_msg)
+            print(warn_msg)
+
+        self.qdrant_client = get_pipeline_qdrant_client(
+            self.qdrant_mode, self.qdrant_url, self.qdrant_local_path
+        )
 
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -124,36 +379,55 @@ class ExtractionPipelineOrchestrator:
         Inherited by all elements in this report.
         """
         cover_text = doc[0].get_text("text") if len(doc) > 0 else ""
+        name_without_ext = re.sub(
+            r"\.pdf$",
+            "",
+            unicodedata.normalize("NFC", Path(doc_name).name),
+            flags=re.IGNORECASE,
+        ).strip()
 
         parsed_fn = parse_new_filename(doc_name)
 
         if parsed_fn:
-            company = parsed_fn["company"]
-            broker = parsed_fn["broker"]
+            target = parsed_fn["target"]
+            source_org = parsed_fn["source_org"]
             pub_date = parsed_fn["publish_date"]
             doc_type = parsed_fn["doc_type"]
         else:
-            doc_type = "REPORT"
-            # 1. Company name from filename (e.g., 'BGF리테일1106.pdf', 'CJ ENM 1106.pdf', '스튜디오 드래곤 1106.pdf')
-            name_without_ext = re.sub(r"\.pdf$", "", doc_name, flags=re.IGNORECASE).strip()
-            # Remove trailing date pattern like 1106, 1109, 1105
-            company_candidate = re.sub(r"[\s_-]*\d{4}$", "", name_without_ext).strip()
-            company = company_candidate if company_candidate else "금융분석"
+            upper_stem = name_without_ext.upper()
+            matched_code = next(
+                (code for code in DOC_TYPE_CODE_MAP if upper_stem.startswith(f"{code}_")),
+                None,
+            )
+            if matched_code:
+                doc_type = DOC_TYPE_CODE_MAP[matched_code]
+                target = None
+                msg = f"[Warn] 파일명 형식이 맞지 않아 대상을 비워둡니다 (doc_name='{doc_name}')"
+                logger.warning(msg)
+                print(msg)
+            else:
+                doc_type = "REPORT"
+                # 옛날 형식(예: 'BGF리테일1106.pdf', 'CJ ENM 1106.pdf') -> 기업명을 target으로 추출
+                company_candidate = re.sub(r"[\s_-]*\d{4}$", "", name_without_ext).strip()
+                target = company_candidate if company_candidate else None
 
-            # 2. Broker name matching
-            known_brokers = [
-                "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
-                "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
-                "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
-                "SK증권", "유진투자증권", "DB금융투자", "iM증권", "다올투자증권"
-            ]
-            broker = "증권사"
-            for b in known_brokers:
-                if b in cover_text or b.replace("증권", "") in cover_text:
-                    broker = b
-                    break
+            # 표지에서 증권사(출처) 매칭 (REPORT일 때만)
+            source_org = None
+            if doc_type == "REPORT":
+                broker_candidates = [
+                    "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
+                    "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
+                    "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
+                    "SK증권", "유진투자증권", "DB증권", "DB금융투자", "iM증권", "하이투자증권",
+                    "다올투자증권", "LS증권", "상상인증권",
+                ]
+                for b in broker_candidates:
+                    short_b = b.replace("투자증권", "").replace("금융투자", "").replace("증권", "")
+                    if b in cover_text or (len(short_b) >= 2 and short_b in cover_text):
+                        source_org = normalize_broker_name(b)
+                        break
 
-            # 5. Publish Date
+            # 발행일 추출 (표지 우선 -> 파일명 끝 MMdd 대체)
             pub_date = date.today()
             date_match = re.search(r"(202[4-6])[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})", cover_text)
             if date_match:
@@ -163,7 +437,6 @@ class ExtractionPipelineOrchestrator:
                 except Exception:
                     pub_date = date.today()
             else:
-                # Fallback from filename date suffix (e.g. 1106 -> 2025-11-06)
                 fn_date_match = re.search(r"(\d{2})(\d{2})$", name_without_ext)
                 if fn_date_match:
                     try:
@@ -172,42 +445,55 @@ class ExtractionPipelineOrchestrator:
                     except Exception:
                         pub_date = date.today()
 
-        # 3. Match 6-digit stock ticker
+        # REPORT일 때만 표지에서 종목코드·애널리스트·업종 추출
         ticker = None
-        ticker_match = re.search(r"\((\d{6})\)|\b(\d{6})\b", cover_text)
-        if ticker_match:
-            ticker = ticker_match.group(1) or ticker_match.group(2)
-
-        # 4. Match Analyst name
         analyst = None
-        analyst_match = re.search(r"([가-힣]{2,4})\s*(?:연구원|애널리스트|위원|RA)", cover_text)
-        if analyst_match:
-            analyst = analyst_match.group(1)
+        industry = None
 
-        # 6. Document Title
-        lines = [line.strip() for line in cover_text.split("\n") if len(line.strip()) > 5]
-        doc_title = f"{company} 리서치 리포트"
-        for line in lines[:5]:
-            if company in line or "Review" in line or "전망" in line or "실적" in line:
-                doc_title = line
-                break
+        if doc_type == "REPORT":
+            ticker_match = re.search(r"\((\d{6})\)|\b(\d{6})\b", cover_text)
+            if ticker_match:
+                ticker = ticker_match.group(1) or ticker_match.group(2)
 
-        # 7. Industry guess
-        industry = "산업/기업분석"
-        for ind in ["반도체", "2차전지", "편의점/유통", "미디어/엔터", "제약/바이오", "에너지", "금융", "통신", "소비재", "화학", "자동차"]:
-            if ind in cover_text:
-                industry = ind
-                break
+            analyst_match = re.search(r"([가-힣]{2,4})\s*(?:연구원|애널리스트|위원|RA)", cover_text)
+            if analyst_match:
+                analyst = analyst_match.group(1)
+
+            lines = [line.strip() for line in cover_text.split("\n") if len(line.strip()) > 5]
+            doc_title = f"{target} 리서치 리포트" if target else name_without_ext
+            for line in lines[:5]:
+                if (target and target in line) or "Review" in line or "전망" in line or "실적" in line:
+                    doc_title = line
+                    break
+
+            industry = "산업/기업분석"
+            for ind in ["반도체", "2차전지", "편의점/유통", "미디어/엔터", "제약/바이오", "에너지", "금융", "통신", "소비재", "화학", "자동차"]:
+                if ind in cover_text:
+                    industry = ind
+                    break
+        else:
+            # REPORT 이외: 표지 앞쪽 본문/첫 줄 우선, 없으면 target 또는 파일명
+            cover_lines = [line.strip() for line in cover_text.split("\n") if line.strip()]
+            long_lines = [line for line in cover_lines if len(line) >= 8]
+            if long_lines:
+                doc_title = max(long_lines[:15], key=len)
+            elif cover_lines:
+                doc_title = cover_lines[0]
+            else:
+                doc_title = target or name_without_ext
 
         return {
-            "company": company,
-            "ticker": ticker,
-            "broker": broker,
-            "analyst": analyst,
+            "target": target,
+            "source_org": source_org,
+            "doc_type": doc_type,
             "publish_date": pub_date,
             "doc_title": doc_title,
+            "ticker": ticker,
+            "analyst": analyst,
             "industry": industry,
-            "doc_type": doc_type,
+            # 하위 호환용: REPORT일 때만 채우고 나머지 문서 유형은 None
+            "company": target if doc_type == "REPORT" else None,
+            "broker": source_org if doc_type == "REPORT" else None,
         }
 
     def tokenize_korean_bm25(self, text: str) -> Dict[int, float]:
@@ -283,7 +569,7 @@ class ExtractionPipelineOrchestrator:
         total_pages = min(len(doc), max_pages)
 
         doc_metadata = self.extract_document_metadata(doc, doc_name)
-        print(f"  -> Extracted Metadata: 기업={doc_metadata['company']}, 증권사={doc_metadata['broker']}, 발행일={doc_metadata['publish_date']}, 종목={doc_metadata.get('ticker')}")
+        print(f"  -> Extracted Metadata: 유형={doc_metadata['doc_type']}, 대상={doc_metadata.get('target')}, 출처={doc_metadata.get('source_org')}, 발행일={doc_metadata['publish_date']}, 종목={doc_metadata.get('ticker')}")
 
         indexed_elements: List[VisualElementSchema] = []
         extracted_count = 0

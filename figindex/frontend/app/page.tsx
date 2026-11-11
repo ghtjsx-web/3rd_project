@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import ComparisonModal from "./components/ComparisonModal";
 import ReviewTab from "./components/ReviewTab";
+import { getDocTypeLabels, formatSourceTarget } from "./lib/docTypeLabels";
 
 interface HealthStatus {
   status: string;
@@ -47,8 +48,9 @@ interface VisualElement {
 }
 
 interface FilterOptions {
-  brokers: string[];
-  companies: string[];
+  doc_types: string[];
+  source_orgs: Record<string, string[]>;
+  targets: Record<string, string[]>;
   publish_dates: string[];
   element_types: string[];
 }
@@ -57,8 +59,9 @@ export default function Home() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [elements, setElements] = useState<VisualElement[]>([]);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    brokers: [],
-    companies: [],
+    doc_types: [],
+    source_orgs: {},
+    targets: {},
     publish_dates: [],
     element_types: ["TABLE", "CHART", "DIAGRAM"],
   });
@@ -68,10 +71,12 @@ export default function Home() {
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedType, setSelectedType] = useState<string>("");
-  const [selectedBroker, setSelectedBroker] = useState<string>("");
-  const [selectedCompany, setSelectedCompany] = useState<string>("");
+  const [selectedDocType, setSelectedDocType] = useState<string>("");
+  const [selectedSourceOrg, setSelectedSourceOrg] = useState<string>("");
+  const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [searchLatency, setSearchLatency] = useState<number | null>(null);
+  const [isLegacyApi, setIsLegacyApi] = useState<boolean>(false);
 
   // Active Tab State (Gallery vs Admin Review)
   const [activeTab, setActiveTab] = useState<"gallery" | "review">("gallery");
@@ -83,6 +88,52 @@ export default function Home() {
   // NEXT_PUBLIC_API_URL로 백엔드 주소 단일화 (미설정 시 조용히 넘기지 않고 경고)
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || "";
   const isApiUrlMissing = !backendUrl.trim();
+  const isDevMode = process.env.NODE_ENV !== "production";
+
+  async function fetchJsonWithDetail<T>(requestPath: string): Promise<T> {
+    const requestUrl = `${backendUrl}${requestPath}`;
+    let res: Response;
+    try {
+      res = await fetch(requestUrl);
+    } catch {
+      throw new Error(`백엔드에 연결할 수 없음 (주소: ${backendUrl}, 요청 경로: ${requestPath})`);
+    }
+
+    if (!res.ok) {
+      let errorMessage = `HTTP ${res.status} ${res.statusText}`;
+      let errorType = "";
+      let errorPath = requestPath;
+      try {
+        const errJson = await res.json();
+        if (errJson && typeof errJson === "object") {
+          if (typeof errJson.error === "string" && errJson.error) {
+            errorMessage = errJson.error;
+          } else if (typeof errJson.detail === "string" && errJson.detail) {
+            errorMessage = errJson.detail;
+          }
+          if (typeof errJson.type === "string" && errJson.type) {
+            errorType = errJson.type;
+          }
+          if (typeof errJson.path === "string" && errJson.path) {
+            errorPath = errJson.path;
+          }
+        }
+      } catch {
+        try {
+          const textBody = await res.text();
+          if (textBody.trim()) {
+            errorMessage = `${errorMessage} - ${textBody.trim().slice(0, 200)}`;
+          }
+        } catch {
+          // ignore body read error
+        }
+      }
+      const prefix = errorType ? `[${errorType}] ` : "";
+      throw new Error(`${prefix}${errorMessage} (요청 경로: ${errorPath})`);
+    }
+
+    return res.json();
+  }
 
   async function fetchHealth() {
     if (isApiUrlMissing) return;
@@ -100,21 +151,47 @@ export default function Home() {
   async function fetchFilterOptions() {
     if (isApiUrlMissing) return;
     try {
-      const res = await fetch(`${backendUrl}/api/filter-options`);
-      if (res.ok) {
-        const data = await res.json();
-        setFilterOptions(data);
+      const data = await fetchJsonWithDetail<any>("/api/filter-options");
+      const hasNewSchema =
+        data &&
+        typeof data === "object" &&
+        "source_orgs" in data &&
+        "targets" in data &&
+        !Array.isArray(data.source_orgs) &&
+        !Array.isArray(data.targets);
+
+      if (!hasNewSchema) {
+        console.warn(
+          "[FigIndex] 예전 API 형식 감지: /api/filter-options 응답에 source_orgs/targets 키가 없습니다.",
+          { backendUrl, keys: Object.keys(data || {}) }
+        );
+        setIsLegacyApi(true);
+        setFilterOptions({
+          doc_types: [],
+          source_orgs: {},
+          targets: {},
+          publish_dates: Array.isArray(data?.publish_dates) ? data.publish_dates : [],
+          element_types: Array.isArray(data?.element_types)
+            ? data.element_types
+            : ["TABLE", "CHART", "DIAGRAM"],
+        });
+        return;
       }
-    } catch (err) {
+
+      setIsLegacyApi(false);
+      setFilterOptions(data);
+    } catch (err: any) {
       console.error("Filter options error:", err);
+      setError((prev) => prev || err?.message || `백엔드에 연결할 수 없음 (주소: ${backendUrl})`);
     }
   }
 
   async function fetchElements(
     query = searchQuery,
     type = selectedType,
-    broker = selectedBroker,
-    company = selectedCompany,
+    docType = selectedDocType,
+    sourceOrg = selectedSourceOrg,
+    target = selectedTarget,
     date = selectedDate
   ) {
     if (isApiUrlMissing) {
@@ -129,21 +206,26 @@ export default function Home() {
       const params = new URLSearchParams();
       if (query.trim()) params.append("query", query.trim());
       if (type) params.append("element_type", type);
-      if (broker) params.append("broker", broker);
-      if (company) params.append("company", company);
+      if (docType) params.append("doc_type", docType);
+      if (sourceOrg) params.append("source_org", sourceOrg);
+      if (target) params.append("target", target);
       if (date) params.append("publish_date", date);
       params.append("limit", "100");
 
-      const res = await fetch(`${backendUrl}/api/elements?${params.toString()}`);
-      if (!res.ok) throw new Error("도표 데이터를 불러오는데 실패했습니다.");
-      const data = await res.json();
+      const requestPath = `/api/elements?${params.toString()}`;
+      const data = await fetchJsonWithDetail<VisualElement[]>(requestPath);
       setElements(data);
 
       const elapsedSec = (performance.now() - startTime) / 1000;
       setSearchLatency(Number(elapsedSec.toFixed(3)));
     } catch (err: any) {
       console.error("Fetch error:", err);
-      setError(err.message || "백엔드 연결 실패");
+      const message = err?.message || "";
+      if (!message || message === "Failed to fetch") {
+        setError(`백엔드에 연결할 수 없음 (주소: ${backendUrl})`);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -152,28 +234,48 @@ export default function Home() {
   useEffect(() => {
     fetchHealth();
     fetchFilterOptions();
-    fetchElements("", "", "", "", "");
+    fetchElements("", "", "", "", "", "");
   }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchElements(searchQuery, selectedType, selectedBroker, selectedCompany, selectedDate);
+    fetchElements(searchQuery, selectedType, selectedDocType, selectedSourceOrg, selectedTarget, selectedDate);
   };
 
   const handleTypeFilter = (type: string) => {
     const nextType = selectedType === type ? "" : type;
     setSelectedType(nextType);
-    fetchElements(searchQuery, nextType, selectedBroker, selectedCompany, selectedDate);
+    fetchElements(searchQuery, nextType, selectedDocType, selectedSourceOrg, selectedTarget, selectedDate);
+  };
+
+  const handleDocTypeChange = (nextDocType: string) => {
+    setSelectedDocType(nextDocType);
+    setSelectedSourceOrg("");
+    setSelectedTarget("");
+    fetchElements(searchQuery, selectedType, nextDocType, "", "", selectedDate);
   };
 
   const handleResetFilters = () => {
     setSearchQuery("");
     setSelectedType("");
-    setSelectedBroker("");
-    setSelectedCompany("");
+    setSelectedDocType("");
+    setSelectedSourceOrg("");
+    setSelectedTarget("");
     setSelectedDate("");
-    fetchElements("", "", "", "", "");
+    fetchElements("", "", "", "", "", "");
   };
+
+  const activeDocLabels = getDocTypeLabels(selectedDocType);
+  const availableSourceOrgs = selectedDocType
+    ? filterOptions.source_orgs?.[selectedDocType] || []
+    : Array.from(new Set(Object.values(filterOptions.source_orgs || {}).flat())).sort((a, b) =>
+        a.localeCompare(b, "ko")
+      );
+  const availableTargets = selectedDocType
+    ? filterOptions.targets?.[selectedDocType] || []
+    : Array.from(new Set(Object.values(filterOptions.targets || {}).flat())).sort((a, b) =>
+        a.localeCompare(b, "ko")
+      );
 
   const handleToggleCompare = (elem: VisualElement, e: React.MouseEvent) => {
     e.preventDefault();
@@ -204,7 +306,7 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-slate-500 mt-1">
-            증권사 리서치 리포트 시각 자료(표·차트·다이어그램) 멀티모달 자동 색인 및 검색
+            PDF 문서 속 표·차트·다이어그램 자동 색인 및 검색
           </p>
         </div>
 
@@ -354,7 +456,7 @@ export default function Home() {
           </button>
         </form>
 
-        {/* Row 2: Metadata Payload Filters (Type, Broker, Company, Publish Date) */}
+        {/* Row 2: Metadata Payload Filters (Doc Type, Source Org, Target, Publish Date) */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
           <div className="flex flex-wrap items-center gap-2">
             {/* Element Type Filter Pills */}
@@ -386,54 +488,72 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Broker Dropdown Filter */}
+            {/* Doc Type Dropdown Filter */}
             <select
-              value={selectedBroker}
-              onChange={(e) => {
-                const b = e.target.value;
-                setSelectedBroker(b);
-                fetchElements(searchQuery, selectedType, b, selectedCompany, selectedDate);
-              }}
+              aria-label="문서 유형"
+              value={selectedDocType}
+              onChange={(e) => handleDocTypeChange(e.target.value)}
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="">증권사 (전체)</option>
-              {filterOptions.brokers.map((broker) => (
-                <option key={broker} value={broker}>
-                  {broker}
+              <option value="">문서 유형 (전체)</option>
+              {(filterOptions.doc_types || []).map((dt) => (
+                <option key={dt} value={dt}>
+                  {getDocTypeLabels(dt).docTypeLabel}
                 </option>
               ))}
             </select>
 
-            {/* Company Dropdown Filter */}
+            {/* Source Org Dropdown Filter */}
             <select
-              value={selectedCompany}
+              aria-label={activeDocLabels.sourceLabel}
+              value={selectedSourceOrg}
               onChange={(e) => {
-                const c = e.target.value;
-                setSelectedCompany(c);
-                fetchElements(searchQuery, selectedType, selectedBroker, c, selectedDate);
+                const s = e.target.value;
+                setSelectedSourceOrg(s);
+                fetchElements(searchQuery, selectedType, selectedDocType, s, selectedTarget, selectedDate);
               }}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[150px]"
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[170px]"
             >
-              <option value="">기업명 (전체)</option>
-              {filterOptions.companies.map((company) => (
-                <option key={company} value={company}>
-                  {company}
+              <option value="">{activeDocLabels.sourceLabel} (전체)</option>
+              {availableSourceOrgs.map((src) => (
+                <option key={src} value={src}>
+                  {src}
+                </option>
+              ))}
+            </select>
+
+            {/* Target Dropdown Filter */}
+            <select
+              aria-label={activeDocLabels.targetLabel}
+              value={selectedTarget}
+              onChange={(e) => {
+                const tgt = e.target.value;
+                setSelectedTarget(tgt);
+                fetchElements(searchQuery, selectedType, selectedDocType, selectedSourceOrg, tgt, selectedDate);
+              }}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[190px]"
+            >
+              <option value="">{activeDocLabels.targetLabel} (전체)</option>
+              {availableTargets.map((tgt) => (
+                <option key={tgt} value={tgt}>
+                  {tgt}
                 </option>
               ))}
             </select>
 
             {/* Publish Date Dropdown Filter */}
             <select
+              aria-label="발행일"
               value={selectedDate}
               onChange={(e) => {
                 const d = e.target.value;
                 setSelectedDate(d);
-                fetchElements(searchQuery, selectedType, selectedBroker, selectedCompany, d);
+                fetchElements(searchQuery, selectedType, selectedDocType, selectedSourceOrg, selectedTarget, d);
               }}
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">발행일 (전체)</option>
-              {filterOptions.publish_dates.map((date) => (
+              {(filterOptions.publish_dates || []).map((date) => (
                 <option key={date} value={date}>
                   {date}
                 </option>
@@ -442,7 +562,7 @@ export default function Home() {
           </div>
 
           {/* Reset Filters Button */}
-          {(selectedType || selectedBroker || selectedCompany || selectedDate || searchQuery) && (
+          {(selectedType || selectedDocType || selectedSourceOrg || selectedTarget || selectedDate || searchQuery) && (
             <button
               type="button"
               onClick={handleResetFilters}
@@ -606,9 +726,16 @@ export default function Home() {
 
               {/* Card Footer with Compare Checkbox */}
               <div className="p-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between gap-2">
-                <div className="truncate max-w-[160px]" title={`${elem.source_org} | ${elem.doc_title}`}>
-                  <span className="font-medium text-slate-700">{elem.source_org}</span>
-                  <span className="text-slate-400 block text-[10px]">{elem.publish_date}</span>
+                <div
+                  className="truncate max-w-[175px]"
+                  title={`${formatSourceTarget(elem) || elem.doc_name} | ${elem.doc_title}`}
+                >
+                  <span className="font-medium text-slate-700">
+                    {formatSourceTarget(elem) || elem.doc_name}
+                  </span>
+                  <span className="text-slate-400 block text-[10px]">
+                    {[getDocTypeLabels(elem.doc_type).docTypeLabel, elem.publish_date].filter(Boolean).join(" · ")}
+                  </span>
                 </div>
 
                 {/* Compare Checkbox Button */}
@@ -696,6 +823,29 @@ export default function Home() {
         elements={selectedForCompare}
         backendUrl={backendUrl}
       />
+
+      {/* Dev-mode only API connection & schema badge */}
+      {isDevMode && (
+        <footer className="mt-10 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold">
+              DEV MODE
+            </span>
+            <span>
+              연결 API:{" "}
+              <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-slate-700">
+                {backendUrl || "(미설정)"}
+              </code>
+            </span>
+          </div>
+
+          {isLegacyApi && (
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold">
+              ⚠️ 예전 API 형식 (/api/filter-options에 source_orgs/targets 없음)
+            </span>
+          )}
+        </footer>
+      )}
     </main>
   );
 }

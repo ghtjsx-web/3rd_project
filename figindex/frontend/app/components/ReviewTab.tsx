@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatSourceTarget } from "../lib/docTypeLabels";
 
 interface TableStructure {
   columns: string[];
@@ -364,7 +365,7 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100 text-xs">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-700">
-                      {elem.extra_metadata?.company || elem.source_org} | {elem.doc_name}
+                      {[formatSourceTarget(elem), elem.doc_name].filter(Boolean).join(" | ")}
                     </span>
                     <span className="text-slate-400">p.{elem.page_number}</span>
                   </div>

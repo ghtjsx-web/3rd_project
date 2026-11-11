@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+import { formatSourceTarget } from "../../lib/docTypeLabels";
 
 // Dynamic import for react-pdf viewer to disable SSR
 const PdfViewer = dynamic(() => import("../../components/PdfViewer"), {
@@ -133,10 +134,12 @@ export default function ElementDetailPage() {
 
         <div className="flex items-center gap-2 text-xs">
           <span className="text-slate-400">출처:</span>
-          <span className="font-semibold text-slate-700">
-            {element.source_org || "증권사"} | {element.doc_title}
+          <span className="font-semibold text-slate-700" title={element.doc_title}>
+            {formatSourceTarget(element) || element.doc_name}
           </span>
-          <span className="text-slate-400">({element.publish_date})</span>
+          {element.publish_date && (
+            <span className="text-slate-400">({element.publish_date})</span>
+          )}
         </div>
       </div>
 

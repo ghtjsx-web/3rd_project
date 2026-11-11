@@ -67,7 +67,9 @@ def migrate_collection_to_local():
     index_fields = [
         ("element_type", qmodels.PayloadSchemaType.KEYWORD),
         ("review_status", qmodels.PayloadSchemaType.KEYWORD),
+        ("doc_type", qmodels.PayloadSchemaType.KEYWORD),
         ("source_org", qmodels.PayloadSchemaType.KEYWORD),
+        ("extra_metadata.target", qmodels.PayloadSchemaType.KEYWORD),
         ("publish_date", qmodels.PayloadSchemaType.KEYWORD),
         ("entities", qmodels.PayloadSchemaType.KEYWORD),
         ("doc_name", qmodels.PayloadSchemaType.KEYWORD),

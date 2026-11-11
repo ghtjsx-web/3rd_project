@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatSourceTarget, getElementSource } from "../lib/docTypeLabels";
 
 interface TableStructure {
   columns: string[];
@@ -135,12 +136,12 @@ export default function ComparisonModal({
             {/* Left Item (A) */}
             <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-200">
-                    [도표 1] {elemA.extra_metadata?.company || elemA.source_org}
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-200 truncate">
+                    [도표 1] {formatSourceTarget(elemA) || elemA.title_or_caption}
                   </span>
-                  <span className="text-xs text-slate-400">
-                    {elemA.source_org} | {elemA.publish_date}
+                  <span className="text-xs text-slate-400 shrink-0">
+                    {[getElementSource(elemA), elemA.publish_date].filter(Boolean).join(" | ")}
                   </span>
                 </div>
 
@@ -165,12 +166,12 @@ export default function ComparisonModal({
             {/* Right Item (B) */}
             <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
-                    [도표 2] {elemB.extra_metadata?.company || elemB.source_org}
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200 truncate">
+                    [도표 2] {formatSourceTarget(elemB) || elemB.title_or_caption}
                   </span>
-                  <span className="text-xs text-slate-400">
-                    {elemB.source_org} | {elemB.publish_date}
+                  <span className="text-xs text-slate-400 shrink-0">
+                    {[getElementSource(elemB), elemB.publish_date].filter(Boolean).join(" | ")}
                   </span>
                 </div>
 
@@ -226,14 +227,14 @@ export default function ComparisonModal({
                           colSpan={Math.max(1, (tableA?.columns?.length || 1) - 1)}
                           className="p-2 text-center bg-indigo-50 text-indigo-800 border-r border-slate-200 font-bold"
                         >
-                          [도표 1] {elemA.extra_metadata?.company || elemA.title_or_caption.slice(0, 15)}
+                          [도표 1] {formatSourceTarget(elemA) || elemA.title_or_caption.slice(0, 15)}
                         </th>
                         {/* Table B Header Columns */}
                         <th
                           colSpan={Math.max(1, (tableB?.columns?.length || 1) - 1)}
                           className="p-2 text-center bg-purple-50 text-purple-800 font-bold"
                         >
-                          [도표 2] {elemB.extra_metadata?.company || elemB.title_or_caption.slice(0, 15)}
+                          [도표 2] {formatSourceTarget(elemB) || elemB.title_or_caption.slice(0, 15)}
                         </th>
                       </tr>
                       {/* Sub-header for column periods */}

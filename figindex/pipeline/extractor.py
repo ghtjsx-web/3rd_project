@@ -137,20 +137,40 @@ class MultimodalExtractor:
         raise RuntimeError("All Gemini model attempts failed after exponential backoff.")
 
     def build_prompt(self, doc_name: str, page_number: int, doc_metadata: Dict[str, Any], hint_type: str = "TABLE") -> str:
-        return f"""당신은 증권사 금융·산업 분석 리포트의 시각 자료(도표/차트) 전문 분석가입니다.
-입력된 이미지는 리포트('{doc_name}', {page_number}페이지)에서 크롭된 시각 요소(추정 유형: {hint_type})입니다.
-문서 정보: 기업명='{doc_metadata.get("company")}', 증권사='{doc_metadata.get("broker")}', 산업='{doc_metadata.get("industry")}'
+        doc_type = doc_metadata.get("doc_type", "REPORT")
+        doc_desc_map = {
+            "REPORT": "증권 리포트(기업·산업 분석 보고서)",
+            "PUBLIC_REPORT": "공공·연구기관 보고서(정책·통계·동향 자료)",
+            "PAPER": "학술 논문(연구 방법·실험·분석 결과)",
+            "IR": "기업 IR·ESG 보고서(실적 발표·경영 전략 자료)",
+        }
+        doc_desc = doc_desc_map.get(doc_type, "PDF 문서")
+
+        hashtag_example_map = {
+            "REPORT": '["#기업명", "#실적전망", "#산업분석"]',
+            "PUBLIC_REPORT": '["#정책동향", "#주요통계", "#발행기관"]',
+            "PAPER": '["#연구주제", "#실험결과", "#핵심방법론"]',
+            "IR": '["#분기실적", "#사업전략", "#ESG"]',
+        }
+        hashtag_ex = hashtag_example_map.get(doc_type, '["#핵심주제", "#주요지표", "#핵심요약"]')
+
+        target = doc_metadata.get("target") or doc_metadata.get("company") or ""
+        source_org = doc_metadata.get("source_org") or doc_metadata.get("broker") or ""
+
+        return f"""당신은 {doc_desc}의 시각 자료(도표/차트/다이어그램) 전문 분석가입니다.
+입력된 이미지는 문서('{doc_name}', {page_number}페이지)에서 크롭된 시각 요소(추정 유형: {hint_type})입니다.
+문서 정보: 출처='{source_org}', 대상='{target}', 문서유형='{doc_type}'
 
 다음 지침에 따라 오직 순수 JSON 포맷으로만 답변하세요 (마크다운 코드블록이나 불필요한 서두 없이):
 
 1. element_type:
-   - "TABLE": 재무제표, 실적 전망치, 수치 비교표 등 표 형식
+   - "TABLE": 재무제표, 실적 전망치, 통계표, 실험 수치 비교표 등 표 형식
    - "CHART": 막대/꺾은선/원형 그래프, 추이 및 비중 시각화
-   - "DIAGRAM": 산업 밸류체인 구조도, 공정 흐름도, 아키텍처 다이어그램
+   - "DIAGRAM": 산업 밸류체인 구조도, 공정 흐름도, 아키텍처 다이어그램, 연구 방법 흐름도, 개념도
 
-2. title_or_caption: 도표 상단/하단에 표기된 제목 (예: '[표 1] 연도별 실적 추이', '그림 2. 분기별 영업이익 추이'). 없을 경우 명확한 제목을 명명하세요.
+2. title_or_caption: 도표 상단/하단에 표기된 제목 (예: '[표 1] 연도별 추이', '그림 2. 주요 지표 비교'). 없을 경우 명확한 제목을 명명하세요.
 3. summary: 도표가 전달하는 핵심 메시지와 주요 수치를 한국어로 2~3줄로 명확히 요약하세요.
-4. hashtags: 관련 기업명, 핵심 제품/지표, 산업 키워드 (예: ["#BGF리테일", "#편의점", "#실적전망"]) 최소 3개 이상.
+4. hashtags: 문서의 핵심 주제, 지표, 분야, 출처 키워드 (예: {hashtag_ex}) 최소 3개 이상.
 
 5. structured_data (element_type이 'TABLE'인 경우 필수, 그 외는 null):
    {{
@@ -188,6 +208,7 @@ class MultimodalExtractor:
         img_hash = self.get_image_hash(crop_path)
 
         # Check Cache first
+        raw_text = ""
         if img_hash in self.cache:
             parsed = self.cache[img_hash]
             is_schema_valid = True
@@ -229,13 +250,19 @@ class MultimodalExtractor:
                 self._save_cache()
 
         # Fallback values if JSON keys missing
+        target = doc_metadata.get("target") or doc_metadata.get("company")
+        source_org = doc_metadata.get("source_org") or doc_metadata.get("broker")
+        if source_org in ("증권사", "금융분석", ""):
+            source_org = None
+
         if not parsed:
             raw_cap = crop_info.get("caption_hint") or f"도표 (p.{page_number})"
+            target_label = target or doc_name
             parsed = {
                 "element_type": crop_info.get("hint_type", "TABLE"),
                 "title_or_caption": raw_cap,
-                "summary": f"{doc_metadata.get('company', '기업')} 리포트 {page_number}페이지 수치 도표입니다.",
-                "hashtags": [f"#{doc_metadata.get('company', '기업')}", "#리포트", "#도표"],
+                "summary": f"{target_label} 문서 {page_number}페이지 수치 도표입니다.",
+                "hashtags": [f"#{target_label}", "#문서도표", "#데이터"],
                 "structured_data": None
             }
 
@@ -274,8 +301,39 @@ class MultimodalExtractor:
             pub_date = date.today()
 
         # Build final VisualElementSchema (v0.4 format)
-        entities = list(set([doc_metadata.get("company", "")] + [doc_metadata.get("broker", "")] + parsed.get("hashtags", [])))
-        entities = [e.replace("#", "") for e in entities if e]
+        ignored_defaults = {"", "증권사", "금융분석"}
+        raw_entities = [target, source_org] + list(parsed.get("hashtags", []))
+        entities: List[str] = []
+        seen_entities = set()
+        for item in raw_entities:
+            if not isinstance(item, str):
+                continue
+            cleaned_ent = item.replace("#", "").strip()
+            if not cleaned_ent or cleaned_ent in ignored_defaults or cleaned_ent in seen_entities:
+                continue
+            seen_entities.add(cleaned_ent)
+            entities.append(cleaned_ent)
+
+        doc_type = doc_metadata.get("doc_type", "REPORT")
+        if doc_type == "REPORT":
+            extra_metadata = {
+                "target": target,
+                "company": target,
+                "ticker": doc_metadata.get("ticker"),
+                "broker": source_org,
+                "industry": doc_metadata.get("industry"),
+                "analyst": doc_metadata.get("analyst"),
+            }
+            domain = doc_metadata.get("industry") or "금융/산업"
+        else:
+            extra_metadata = {
+                "target": target,
+                "company": None,
+                "ticker": None,
+                "broker": None,
+                "analyst": None,
+            }
+            domain = None
 
         element = VisualElementSchema(
             element_id=crop_info["element_id"],
@@ -291,19 +349,13 @@ class MultimodalExtractor:
             confidence_score=eval_result["confidence_score"],
             review_status=eval_result["review_status"],
             doc_title=doc_metadata.get("doc_title", doc_name),
-            doc_type=doc_metadata.get("doc_type", "REPORT"),
-            domain=doc_metadata.get("industry", "금융/산업"),
-            source_org=doc_metadata.get("broker", "증권사"),
+            doc_type=doc_type,
+            domain=domain,
+            source_org=source_org,
             authors=[doc_metadata.get("analyst")] if doc_metadata.get("analyst") else [],
             publish_date=pub_date,
             entities=entities,
-            extra_metadata={
-                "company": doc_metadata.get("company"),
-                "ticker": doc_metadata.get("ticker"),
-                "broker": doc_metadata.get("broker"),
-                "industry": doc_metadata.get("industry"),
-                "analyst": doc_metadata.get("analyst")
-            }
+            extra_metadata=extra_metadata,
         )
 
         return element

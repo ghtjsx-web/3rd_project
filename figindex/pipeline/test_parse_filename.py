@@ -1,62 +1,67 @@
 """
-새 PDF 파일명 형식 및 기존 파일명 호환성 테스트 스크립트
+/data/pdfs 바로 아래 모든 PDF 파일에 대해 parse_filename() 결과를 표로 출력하는 테스트 스크립트
+(Gemini·Qdrant 호출 없이 동작)
+
 실행 방법:
   docker compose run --rm pipeline python test_parse_filename.py
 """
 
-from orchestrator import parse_new_filename, ExtractionPipelineOrchestrator
+import os
+from pathlib import Path
+from orchestrator import parse_filename
 
 
-class _DummyPage:
-    def __init__(self, text: str):
-        self._text = text
+SAMPLE_FILENAMES = [
+    "보고서20251231해상풍력보급확대를위한지자체역할_에너지경제연구원.pdf",
+    "리포트202605122026년세계경제전망_대외경제정책연구원.pdf",
+    "논문2025020112차베이비붐세대의소득및자산특_한국보건사회연구원.pdf",
+]
 
-    def get_text(self, mode: str = "text") -> str:
-        return self._text
 
+def print_table(title: str, filenames: list[str]):
+    parsed_rows = []
+    unparsed_files = []
 
-class _DummyDoc:
-    def __init__(self, cover_text: str):
-        self._pages = [_DummyPage(cover_text)]
+    for fname in filenames:
+        res = parse_filename(fname)
+        if res:
+            parsed_rows.append((fname, res))
+        else:
+            unparsed_files.append(fname)
 
-    def __len__(self) -> int:
-        return len(self._pages)
+    print(f"\n[{title}] 총 {len(filenames)}개 (성공: {len(parsed_rows)}개 / 미매칭: {len(unparsed_files)}개)\n")
+    print(f"{'파일명':<50} | {'doc_type':<13} | {'날짜':<10} | {'대상':<28} | {'출처'}")
+    print("-" * 125)
 
-    def __getitem__(self, idx: int) -> _DummyPage:
-        return self._pages[idx]
+    for fname, res in parsed_rows:
+        print(
+            f"{fname:<50} | {res['doc_type']:<13} | {res['date'].isoformat():<10} | "
+            f"{res['target']:<28} | {res['source']}"
+        )
+
+    if unparsed_files:
+        print("\n" + "=" * 60)
+        print(f"[규칙 미매칭(기존 방식 fallback 대상) 파일 목록: {len(unparsed_files)}개]")
+        print("=" * 60)
+        for fname in unparsed_files:
+            print(f"  - {fname}")
 
 
 def main():
-    test_cases = [
-        (
-            "RPT_20261109_현대백화점_대신증권.pdf",
-            "현대백화점 (069960)\n2026.11.09\n대신증권 유정현 연구원\n유통업종",
-        ),
-        (
-            "RPT_20261106_삼성전자_키움증권_2.pdf",
-            "삼성전자 (005930)\n2026.11.05\n키움증권 박유악 연구원\n반도체",
-        ),
-        (
-            "PUB_20261020_반도체수출동향_산업연구원.pdf",
-            "2026년 10월 반도체 수출 동향\n산업연구원 홍길동 연구위원",
-        ),
-        (
-            "현대백화점1106.pdf",
-            "현대백화점 (069960)\n대신증권 유정현 연구원\n유통",
-        ),
-    ]
+    print_table("형식 C 예시 검증", SAMPLE_FILENAMES)
 
-    orchestrator = ExtractionPipelineOrchestrator()
+    pdfs_dir = Path(os.getenv("PDFS_DIR", "/data/pdfs"))
+    if not pdfs_dir.exists():
+        print(f"\n[안내] {pdfs_dir} 폴더가 없어 실제 PDF 목록 검사는 건너뜁니다.")
+        return
 
-    for filename, dummy_cover in test_cases:
-        parsed = parse_new_filename(filename)
-        meta = orchestrator.extract_document_metadata(_DummyDoc(dummy_cover), filename)
-        print("=" * 60)
-        print(f"입력 파일명        : {filename}")
-        print(f"parse_new_filename : {parsed}")
-        print(f"extract_metadata   : {meta}")
+    pdf_files = sorted([p.name for p in pdfs_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"])
+    if not pdf_files:
+        print(f"\n[안내] {pdfs_dir} 바로 아래에 PDF 파일이 없습니다.")
+        return
+
+    print_table(f"{pdfs_dir} 전체 PDF 검사", pdf_files)
 
 
 if __name__ == "__main__":
     main()
-

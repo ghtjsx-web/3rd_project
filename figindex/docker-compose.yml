@@ -16,19 +16,22 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: figindex-backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app --reload-dir /app/shared
     ports:
       - "8000:8000"
     env_file:
       - .env
     environment:
+      - QDRANT_MODE=server
       - QDRANT_URL=http://qdrant:6333
       - CROPS_DIR=/data/crops
       - PDFS_DIR=/data/pdfs
+      - WATCHFILES_FORCE_POLLING=true
+      - GIT_COMMIT=${GIT_COMMIT:-unknown}
     volumes:
       - ./backend/app:/app/app
       - ./data:/data
@@ -47,6 +50,7 @@ services:
     env_file:
       - .env
     environment:
+      - QDRANT_MODE=server
       - QDRANT_URL=http://qdrant:6333
       - CROPS_DIR=/data/crops
       - PDFS_DIR=/data/pdfs
@@ -55,6 +59,7 @@ services:
       - ./data:/data
       - ./shared:/app/shared
       - ./data/model_cache:/root/.cache
+      - ../scripts:/scripts
     depends_on:
       qdrant:
         condition: service_healthy
@@ -63,16 +68,21 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
     container_name: figindex-frontend
     restart: unless-stopped
+    command: npm run dev
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
     depends_on:
       - backend
 
