@@ -291,7 +291,7 @@ class MultimodalExtractor:
             confidence_score=eval_result["confidence_score"],
             review_status=eval_result["review_status"],
             doc_title=doc_metadata.get("doc_title", doc_name),
-            doc_type="REPORT",
+            doc_type=doc_metadata.get("doc_type", "REPORT"),
             domain=doc_metadata.get("industry", "금융/산업"),
             source_org=doc_metadata.get("broker", "증권사"),
             authors=[doc_metadata.get("analyst")] if doc_metadata.get("analyst") else [],

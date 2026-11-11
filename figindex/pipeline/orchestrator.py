@@ -2,6 +2,7 @@ import os
 import re
 import math
 import hashlib
+import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -23,6 +24,55 @@ try:
 except ImportError:
     from app.pipeline.cropper import PDFCropper
     from app.pipeline.extractor import MultimodalExtractor
+
+
+DOC_TYPE_CODE_MAP = {
+    "RPT": "REPORT",
+    "PUB": "PUBLIC_REPORT",
+}
+
+
+def parse_new_filename(doc_name: str) -> Optional[Dict[str, Any]]:
+    """
+    새 PDF 파일명 형식({종류}_{YYYYMMDD}_{대상}_{출처}(_숫자).pdf)을 파싱합니다.
+    예: RPT_20261109_현대백화점_대신증권.pdf
+        RPT_20261106_삼성전자_키움증권_2.pdf
+        PUB_20261020_반도체수출동향_산업연구원.pdf
+    형식이 맞지 않으면 None을 반환합니다.
+    """
+    normalized = unicodedata.normalize("NFC", Path(doc_name).name).strip()
+    stem = re.sub(r"\.pdf$", "", normalized, flags=re.IGNORECASE).strip()
+    parts = stem.split("_")
+
+    # 최소 4개 파트(종류, YYYYMMDD, 대상, 출처) 필요. 5번째 파트는 중복 접미사(_2, _3 등)
+    if len(parts) < 4:
+        return None
+    if len(parts) >= 5 and re.fullmatch(r"\d+", parts[-1]):
+        parts = parts[:-1]
+    if len(parts) != 4:
+        return None
+
+    kind_code, date_str, target, source_org = [p.strip() for p in parts]
+    doc_type = DOC_TYPE_CODE_MAP.get(kind_code.upper())
+    if not doc_type:
+        return None
+    if not re.fullmatch(r"\d{8}", date_str):
+        return None
+
+    try:
+        pub_date = date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+    except ValueError:
+        return None
+
+    if not target or not source_org:
+        return None
+
+    return {
+        "doc_type": doc_type,
+        "publish_date": pub_date,
+        "company": target,
+        "broker": source_org,
+    }
 
 
 class ExtractionPipelineOrchestrator:
@@ -75,24 +125,52 @@ class ExtractionPipelineOrchestrator:
         """
         cover_text = doc[0].get_text("text") if len(doc) > 0 else ""
 
-        # 1. Company name from filename (e.g., 'BGF리테일1106.pdf', 'CJ ENM 1106.pdf', '스튜디오 드래곤 1106.pdf')
-        name_without_ext = re.sub(r"\.pdf$", "", doc_name, flags=re.IGNORECASE).strip()
-        # Remove trailing date pattern like 1106, 1109, 1105
-        company_candidate = re.sub(r"[\s_-]*\d{4}$", "", name_without_ext).strip()
-        company = company_candidate if company_candidate else "금융분석"
+        parsed_fn = parse_new_filename(doc_name)
 
-        # 2. Broker name matching
-        known_brokers = [
-            "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
-            "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
-            "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
-            "SK증권", "유진투자증권", "DB금융투자", "iM증권", "다올투자증권"
-        ]
-        broker = "증권사"
-        for b in known_brokers:
-            if b in cover_text or b.replace("증권", "") in cover_text:
-                broker = b
-                break
+        if parsed_fn:
+            company = parsed_fn["company"]
+            broker = parsed_fn["broker"]
+            pub_date = parsed_fn["publish_date"]
+            doc_type = parsed_fn["doc_type"]
+        else:
+            doc_type = "REPORT"
+            # 1. Company name from filename (e.g., 'BGF리테일1106.pdf', 'CJ ENM 1106.pdf', '스튜디오 드래곤 1106.pdf')
+            name_without_ext = re.sub(r"\.pdf$", "", doc_name, flags=re.IGNORECASE).strip()
+            # Remove trailing date pattern like 1106, 1109, 1105
+            company_candidate = re.sub(r"[\s_-]*\d{4}$", "", name_without_ext).strip()
+            company = company_candidate if company_candidate else "금융분석"
+
+            # 2. Broker name matching
+            known_brokers = [
+                "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
+                "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
+                "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
+                "SK증권", "유진투자증권", "DB금융투자", "iM증권", "다올투자증권"
+            ]
+            broker = "증권사"
+            for b in known_brokers:
+                if b in cover_text or b.replace("증권", "") in cover_text:
+                    broker = b
+                    break
+
+            # 5. Publish Date
+            pub_date = date.today()
+            date_match = re.search(r"(202[4-6])[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})", cover_text)
+            if date_match:
+                try:
+                    y, m, d = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
+                    pub_date = date(y, m, d)
+                except Exception:
+                    pub_date = date.today()
+            else:
+                # Fallback from filename date suffix (e.g. 1106 -> 2025-11-06)
+                fn_date_match = re.search(r"(\d{2})(\d{2})$", name_without_ext)
+                if fn_date_match:
+                    try:
+                        m, d = int(fn_date_match.group(1)), int(fn_date_match.group(2))
+                        pub_date = date(2025, m, d)
+                    except Exception:
+                        pub_date = date.today()
 
         # 3. Match 6-digit stock ticker
         ticker = None
@@ -105,25 +183,6 @@ class ExtractionPipelineOrchestrator:
         analyst_match = re.search(r"([가-힣]{2,4})\s*(?:연구원|애널리스트|위원|RA)", cover_text)
         if analyst_match:
             analyst = analyst_match.group(1)
-
-        # 5. Publish Date
-        pub_date = date.today()
-        date_match = re.search(r"(202[4-6])[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})", cover_text)
-        if date_match:
-            try:
-                y, m, d = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
-                pub_date = date(y, m, d)
-            except Exception:
-                pub_date = date.today()
-        else:
-            # Fallback from filename date suffix (e.g. 1106 -> 2025-11-06)
-            fn_date_match = re.search(r"(\d{2})(\d{2})$", name_without_ext)
-            if fn_date_match:
-                try:
-                    m, d = int(fn_date_match.group(1)), int(fn_date_match.group(2))
-                    pub_date = date(2025, m, d)
-                except Exception:
-                    pub_date = date.today()
 
         # 6. Document Title
         lines = [line.strip() for line in cover_text.split("\n") if len(line.strip()) > 5]
@@ -147,7 +206,8 @@ class ExtractionPipelineOrchestrator:
             "analyst": analyst,
             "publish_date": pub_date,
             "doc_title": doc_title,
-            "industry": industry
+            "industry": industry,
+            "doc_type": doc_type,
         }
 
     def tokenize_korean_bm25(self, text: str) -> Dict[int, float]:
