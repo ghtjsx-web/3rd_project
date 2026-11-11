@@ -52,6 +52,7 @@ data/qdrant/*
 !data/qdrant/.gitkeep
 data/model_cache/*
 !data/model_cache/.gitkeep
+data/yolo_trial/
 
 # ==============================================================================
 # IDE & OS

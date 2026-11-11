@@ -1,5 +1,6 @@
 pymupdf>=1.23.0
 doclayout-yolo>=0.0.2
+huggingface_hub>=0.23.0
 kiwipiepy>=0.17.0
 qdrant-client>=1.8.0
 google-genai>=0.1.0
