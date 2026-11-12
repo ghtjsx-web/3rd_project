@@ -240,6 +240,7 @@ class ElementSearchPayload(Element):
     doc_type: Optional[str] = None
     domain: Optional[str] = None
     source_org: Optional[str] = None
+    authors: List[str] = Field(default_factory=list)
     publish_date: Optional[date] = None
     collection_id: Optional[str] = None
 
