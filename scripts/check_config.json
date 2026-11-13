@@ -25,7 +25,8 @@
     "docs/glossary.md",
     "figindex/shared/schemas.py",
     "scripts/check_config.json",
-    "scripts/check_baseline.json"
+    "scripts/check_baseline.json",
+    "scripts/check_state.py"
   ],
   "api_base": "http://localhost:8000",
   "qdrant_url": "http://localhost:6333",

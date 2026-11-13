@@ -134,7 +134,7 @@ class CheckResult:
     def warn(self, msg: str, detail: Optional[str] = None):
         if self.status != "FAIL":
             self.status = "WARN"
-        self.message = msg
+            self.message = msg
         if detail:
             self.details.append(detail)
 
@@ -155,6 +155,76 @@ class CheckResult:
             self.message = msg
 
 
+def normalize_repo_path(path_str: str) -> str:
+    """경로를 저장소 루트 기준 상대 경로이자 '/' 구분자, './' 접두사 제거 형태로 정규화합니다."""
+    p = str(path_str).strip().replace("\\", "/")
+    while p.startswith("./"):
+        p = p[2:]
+    return p
+
+
+def check_a1_git_scope(
+    changed_files: Set[str],
+    protected_files: Set[str],
+    allowed_protected_files: Set[str],
+    expect_files: Optional[Set[str]],
+    branch: str = "HEAD",
+) -> CheckResult:
+    """A1. Git 변경 범위 및 수정 금지 파일 검사 (단위 테스트 가능한 순수 로직)."""
+    res = CheckResult("A1", "Git 변경 범위")
+    res.metrics["branch"] = branch
+
+    norm_changed = {normalize_repo_path(f) for f in changed_files if f.strip()}
+    norm_protected = {normalize_repo_path(p) for p in protected_files if p.strip()}
+    norm_allowed = {normalize_repo_path(a) for a in allowed_protected_files if a.strip()}
+    norm_expect = {normalize_repo_path(e) for e in expect_files if e.strip()} if expect_files is not None else None
+
+    res.metrics["changed_files"] = sorted(list(norm_changed))
+    res.metrics["protected_files"] = sorted(list(norm_protected))
+
+    # 1. 수정 금지 파일 검사
+    protected_changed = norm_changed & norm_protected
+    unauthorized_protected = protected_changed - norm_allowed
+    authorized_protected = protected_changed & norm_allowed
+
+    res.metrics["authorized_protected"] = sorted(list(authorized_protected))
+    res.metrics["unauthorized_protected"] = sorted(list(unauthorized_protected))
+
+    if unauthorized_protected:
+        unauth_list = sorted(list(unauthorized_protected))
+        res.fail(
+            f"수정 금지 파일({', '.join(unauth_list)})이 변경되었습니다.",
+            detail=f"수정 금지: {', '.join(unauth_list)}"
+        )
+        for uf in unauth_list:
+            res.details.append(f"수정 금지: {uf}")
+        if authorized_protected:
+            auth_list = sorted(list(authorized_protected))
+            res.details.append(f"팀장 승인 예외: {', '.join(auth_list)}")
+    elif authorized_protected:
+        auth_list = sorted(list(authorized_protected))
+        res.warn(
+            f"팀장 승인으로 수정됨: {', '.join(auth_list)}",
+            detail=f"팀장 승인 수정: {', '.join(auth_list)}"
+        )
+
+    # 2. --expect 범위 검사 (수정 금지 여부와 무관하게 변경 예상 범위 검사)
+    if norm_expect is not None:
+        unexpected = norm_changed - norm_expect
+        # 임시 리포트 파일은 제외
+        unexpected = {f for f in unexpected if not f.startswith(".check_reports/")}
+        if unexpected:
+            res.fail(
+                f"--expect 목록 이외의 파일({len(unexpected)}개)이 변경되었습니다.",
+                f"예상 밖 변경: {', '.join(sorted(list(unexpected))[:5])}"
+            )
+
+    if res.status not in ("FAIL", "WARN"):
+        res.pass_(f"브랜치: {branch}, 변경 파일: {len(norm_changed)}개")
+
+    return res
+
+
 class StateChecker:
     def __init__(
         self,
@@ -163,13 +233,20 @@ class StateChecker:
         base: str = "HEAD",
         no_docker: bool = False,
         collection_override: Optional[str] = None,
+        allow_protected: Optional[str] = None,
     ):
         self.mode = mode
         self.expect_raw = expect
         self.expect_files: Optional[Set[str]] = (
-            {Path(f.strip()).as_posix() for f in expect.split(",") if f.strip()}
+            {normalize_repo_path(f) for f in expect.split(",") if f.strip()}
             if expect
             else None
+        )
+        self.allow_protected_raw = allow_protected
+        self.allow_protected_files: Set[str] = (
+            {normalize_repo_path(f) for f in allow_protected.split(",") if f.strip()}
+            if allow_protected
+            else set()
         )
         self.base = base
         self.no_docker = no_docker
@@ -251,7 +328,6 @@ class StateChecker:
 
     def run_check_a1_git_scope(self) -> CheckResult:
         """A1. Git 변경 범위 검사"""
-        res = CheckResult("A1", "Git 변경 범위")
         branch_proc = subprocess.run(
             ["git", "branch", "--show-current"],
             cwd=REPO_ROOT,
@@ -260,9 +336,8 @@ class StateChecker:
             encoding="utf-8"
         )
         branch = branch_proc.stdout.strip() or "HEAD(detached)"
-        res.metrics["branch"] = branch
 
-        # 변경 파일 목록 추출 (base 대비)
+        # 변경 파일 목록 추출 (base 대비 diff + untracked)
         diff_proc = subprocess.run(
             ["git", "diff", "--name-only", self.base],
             cwd=REPO_ROOT,
@@ -282,34 +357,17 @@ class StateChecker:
         for line in (diff_proc.stdout + "\n" + untracked_proc.stdout).splitlines():
             line = line.strip()
             if line:
-                changed.add(Path(line).as_posix())
+                changed.add(normalize_repo_path(line))
 
-        res.metrics["changed_files"] = sorted(list(changed))
-        protected = {Path(p).as_posix() for p in self.config.get("protected_files", [])}
+        protected = {normalize_repo_path(p) for p in self.config.get("protected_files", [])}
 
-        # 1. protected_files 검사 (단, --expect에 명시적으로 지정된 경우 허용)
-        for cf in sorted(list(changed)):
-            if cf in protected:
-                if self.expect_files and cf in self.expect_files:
-                    # 명시 허용
-                    continue
-                res.fail(f"수정 금지 파일({cf})이 변경되었습니다.", f"수정 금지: {cf}")
-
-        # 2. --expect 범위 검사
-        if self.expect_files is not None:
-            unexpected = changed - self.expect_files
-            # 임시 리포트 파일은 제외
-            unexpected = {f for f in unexpected if not f.startswith(".check_reports/")}
-            if unexpected:
-                res.fail(
-                    f"--expect 목록 이외의 파일({len(unexpected)}개)이 변경되었습니다.",
-                    f"예상 밖 변경: {', '.join(sorted(list(unexpected))[:5])}"
-                )
-
-        if res.status != "FAIL":
-            res.pass_(f"브랜치: {branch}, 변경 파일: {len(changed)}개")
-
-        return res
+        return check_a1_git_scope(
+            changed_files=changed,
+            protected_files=protected,
+            allowed_protected_files=self.allow_protected_files,
+            expect_files=self.expect_files,
+            branch=branch,
+        )
 
     def run_check_a2_forbidden_names(self) -> CheckResult:
         """A2. 금지 이름 검사 (AGENTS.md 2절 직접 추출)"""
@@ -1055,12 +1113,23 @@ class StateChecker:
             f"- **HEAD 커밋**: `{head_commit}`",
             f"- **기준선 커밋**: `{base_commit}`",
             f"- **검사 결과**: {'❌ FAIL 있음' if has_fail else '✅ 정상 통과'}",
+        ]
+
+        if self.allow_protected_files:
+            lines.extend([
+                "",
+                "> [!WARNING]",
+                "> **팀장 승인 수정 금지 파일 예외 허용 (`--allow-protected`):**",
+                f"> `{', '.join(sorted(list(self.allow_protected_files)))}`",
+            ])
+
+        lines.extend([
             "",
             "## 1. 검사 항목 요약",
             "",
             "| 코드 | 항목 | 상태 | 요약 메시지 |",
             "| :--- | :--- | :---: | :--- |",
-        ]
+        ])
 
         for r in self.results:
             lines.append(f"| {r.code} | {r.title} | `{r.status}` | {r.message} |")
@@ -1154,6 +1223,7 @@ def main():
     parser.add_argument("--quick", action="store_true", default=True, help="A그룹 빠른 검사 (기본값)")
     parser.add_argument("--full", action="store_true", help="A그룹 + B그룹 전체 검사")
     parser.add_argument("--expect", type=str, default=None, help="변경 허용 파일 목록 (콤마 구분)")
+    parser.add_argument("--allow-protected", type=str, default=None, help="팀장 승인된 수정 금지 파일 목록 (콤마 구분, FAIL 대신 WARN 처리)")
     parser.add_argument("--base", type=str, default="HEAD", help="Git 비교 기준 (기본값 HEAD)")
     parser.add_argument("--no-docker", action="store_true", help="Docker 필요 검사 생략")
     parser.add_argument("--collection", type=str, default=None, help="Qdrant 컬렉션 이름 오버라이드")
@@ -1162,12 +1232,19 @@ def main():
     args = parser.parse_args()
     mode = "full" if args.full else "quick"
 
+    # 안전장치: --allow-protected가 지정된 상태에서는 기준선 저장 절대 금지
+    if args.save_baseline and args.allow_protected:
+        print("\n[FAIL] --allow-protected 옵션이 지정된 상태에서는 기준선(--save-baseline)을 저장할 수 없습니다.")
+        print("수정 금지 파일이 승인 수정된 상태에서는 먼저 변경 사항을 커밋하거나 되돌린 후 기준선을 저장해야 합니다.")
+        sys.exit(1)
+
     checker = StateChecker(
         mode=mode,
         expect=args.expect,
         base=args.base,
         no_docker=args.no_docker,
         collection_override=args.collection,
+        allow_protected=args.allow_protected,
     )
 
     exit_code = checker.run_all()
