@@ -116,6 +116,54 @@
     - `ALLOWED_REQUEST_PATTERNS` 화이트리스트를 통한 안전한 읽기 전용 HTTP 요청 강제.
     - `AGENTS.md` 7절(수정 금지 파일에 check_config, check_baseline 추가 및 save-baseline AI 실행 금지 명시) 및 8절(작업 보고에 check_state 요약 의무화) 반영 완료.
 
+12. **상태 검사기 B1 이미지 응답 처리·A8 pytest 안내·A7 경로 매칭 보완 (2026-11-13)**
+    - **B1 샘플 이미지 오류 해결**: `safe_http_request()`가 PNG 바이너리 응답(`/static/crops/*.png`)을 utf-8로 디코드하려다 `UnicodeDecodeError`가 발생하던 검사기 자체 결함을 수정 (`Content-Type: image/` 또는 decode 실패 시 raw bytes 반환). 백엔드와 프론트엔드는 정상(HTTP 200) 확인.
+    - **B1 실패 리포트 고도화**: 실패 시 URL과 HTTP 상태 코드를 세부 리포트에 명시하고, 기준선이 없을 때는 "0 ➔ 3 증가" 대신 "실패 N건"으로 표시.
+    - **A8 pytest 의존성 및 안내 메시지 추가**: `figindex/pipeline/requirements.txt`에 `pytest>=8.0.0` 추가 완료 및 Docker 실행 시 `No module named pytest` 발생 시 `docker compose build pipeline` 실행 안내 메시지 출력.
+    - **A7 검사 파일 수 정상화**: `check_config.json`의 `"app"` 제외 규칙이 `figindex/backend/app`까지 오인 제외하던 문제를 `is_path_excluded`로 수정하여 `main.py` 복원 (대상 Python 파일 18개 ➔ 19개).
+    - **기준선 저장 안전조건 강화**: `--save-baseline`은 `--full` 모드에서만 실행 가능하며, FAIL뿐 아니라 SKIP 항목이 하나라도 있을 때도 저장을 거부하도록 수정.
+
+13. **v2 컬렉션 이전 스크립트 및 10종 단위 테스트 작성 (프롬프트 5a-1, 2026-11-13)**
+    - **순수 변환 함수 `transform_payload` 구현 (`figindex/pipeline/migrate_to_v2.py`)**:
+      - `title_or_caption` ➔ `caption`, `structured_data` ➔ `table_data`(`TableData` 검증), `bbox` `[ymin, xmin, ymax, xmax]` ➔ `coords.from_legacy_yxyx`를 통한 `[x0, y0, x1, y1]` 변환 및 `coords.validate_bbox` 유효성 검사.
+      - `authors`는 상위 필드로 직접 보존, TABLE이 아닌 요소의 옛 표 데이터 및 비표준 키는 `extra_metadata["legacy"]`로 안전 격리.
+      - 동일 `doc_name`에 대해 단일 `doc_id`(UUIDv4) 매핑 보장.
+      - `ElementSearchPayload`를 통한 최종 스키마 검증.
+    - **단위 테스트 10종 구현 및 통과 (`figindex/pipeline/test_migrate_to_v2.py`)**:
+      - 정상 TABLE, 정상 CHART, 옛 표 없는 TABLE, TableData 검증 실패(키 불일치), target 없는 요소, authors 보존, 레거시 키 격리, bbox 정상 변환, 뒤집힌 bbox 제외, 동일 doc_name doc_id 일치 등 10개 케이스 작성 및 100% 통과 (파이프라인 전체 단위 테스트 36건으로 증가).
+    - **Dry-Run 실행 완료 (`figindex/data/migration/dry_run_20261113-1048.md`)**:
+      - 원본 525건 중 **525건 전원 변환 성공** (제외: 0건), 고유 문서 142개 식별.
+      - `doc_type` 및 `review_status` 분포 100% 일치.
+      - `TableData` 검증 실패 13건(키 불일치 등)은 안전하게 `table_data=None` 처리 및 요소 보존.
+      - Qdrant 실데이터 쓰기/수정 0건 (읽기 전용 보장, `check_state.py --full` B2 통과로 불변 입증).
+
+14. **문서 이름(doc_name) 142개 vs 118건 정합성 조사 완료 (2026-11-13)**
+    - **원인 규명**: Qdrant 142개 중 113개는 루트 파일명과 일치하며, **29개는 `rename_reports.py` 실행 전 과거 이름**(`rename_plan.csv` 기록)으로 현재 새 이름(`RPT_...`)과 함께 **Qdrant에 이중 색인**되어 있음 (113 + 29 = 142개). 루트 PDF 118건 중 5건은 미색인 파일 (113 + 5 = 118).
+    - **영향 및 중복도 분석**:
+      - 29개 과거 이름 문서는 백엔드 원문 PDF 조회 시 파일이 없어 **404 Not Found (원문 보기 실패)** 발생.
+      - 동일 SHA-256 해시 묶음 29개 내에서 동일 페이지 및 IoU ≥ 0.9인 **중복 도표 요소가 60건** 존재.
+      - 중복을 제거한 **순수 실제 요소 수는 465건** (525건 - 60건).
+      - 디스크 어디에도 파일이 없는 고아 문서는 0건(142건 전체가 실제 PDF와 1:1 대응 확인).
+    - **결과물 및 검증**:
+      - 조사 리포트(`figindex/data/migration/doc_name_audit_20261113-1111.md`) 및 정리안 CSV(`.csv`) 생성 완료.
+      - `audit_doc_names.py` 및 단위 테스트 3종(`test_audit_doc_names.py`) 작성 완료 (파이프라인 단위 테스트 총 39건 100% 통과).
+      - `check_state.py --full` 검사 11개 전 항목 통과 (기존 데이터 B2 불변 입증).
+
+15. **v2 마이그레이션 스크립트에 doc_name 정리안 반영 및 최종 dry-run 완료 (프롬프트 5a-2, 2026-11-13)**
+    - **팀장 결정 사항 100% 구현 (`figindex/pipeline/migrate_to_v2.py`)**:
+      - **doc_name 정리**: `doc_name_audit_20261113-1111.csv` 맵을 적용하여 과거 이름 29개를 실제 PDF 파일명(`canonical_doc_name`)으로 치환. `doc_id`는 대표 이름 기준으로 발급하여 고유 문서 113개로 단일화.
+      - **중복 요소 제거 (`filter_duplicate_elements`)**: 동일 PDF·동일 페이지·IoU ≥ 0.9인 옛 이름 쪽 중복 요소 60건을 정밀 필터링하여 제외 (최종 이전 465건 달성). 옛 이름에만 있고 중복이 아닌 요소는 새 이름으로 갱신하여 안전하게 보존.
+      - **`pipeline_version` 고정**: 이전되는 모든 레거시 데이터의 버전을 `"0.0.0"`으로 설정.
+      - **`table_data` 검증 실패 처리**: `table_data = None`으로 초기화하고, 기존 `APPROVED` 요소 10건을 `PENDING_REVIEW`로 자동 전환하며 `extra_metadata["legacy"]["migration_note"]`에 사유 상세 기록.
+      - **예상값 검증 안전장치**: 대상 525건, 제외 60건, 최종 465건, 고유 문서 113개, 원문 누락 0개가 아닐 시 즉시 중단(Abort)하는 방어 로직 내장.
+      - **제외 요소 기록**: `--execute` 시 제외된 60건의 메타데이터를 `figindex/data/migration/dropped_elements_YYYYMMDD-HHMM.csv`에 자동 영구 보존.
+    - **단위 테스트 5종 추가 구현 및 100% 통과 (`figindex/pipeline/test_migrate_to_v2.py`)**:
+      - 옛 이름 ➔ 새 대표 이름 및 doc_id 매핑 일치, 중복 쌍 새 이름 요소만 유지 및 옛 이름 요소 제외, 비중복 옛 요소 보존, TableData 실패 시 APPROVED ➔ PENDING_REVIEW 및 메모 기록, pipeline_version=="0.0.0" 검증 등 총 15개 테스트 작성 완료 (파이프라인 전체 단위 테스트 44건 100% 통과).
+    - **최종 dry-run 검증 완료 (`figindex/data/migration/dry_run_v2_final_20261113-1121.md`)**:
+      - **대상 525건 ➔ 제외 60건 ➔ 최종 이전 465건, 고유 문서 113개, 원문 누락 0개** 예상 기준치와 100% 일치 확인.
+      - 이전 후 검수 상태: `APPROVED` 386건 (83.0%), `PENDING_REVIEW` 79건 (17.0%, TableData 검증 실패 10건 포함).
+      - Qdrant 실데이터 쓰기/수정 0건 유지 (읽기 전용 보장, `check_state.py --full` 11개 전 항목 PASS 확인).
+
 ---
 
 ## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
