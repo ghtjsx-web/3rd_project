@@ -91,7 +91,19 @@ def safe_http_request(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status = resp.status
-            body = resp.read().decode("utf-8")
+            content_type = resp.headers.get("Content-Type", "")
+            raw_bytes = resp.read()
+
+            # 이미지 바이너리 응답인 경우 성공 처리 (디코드 생략)
+            if content_type.startswith("image/"):
+                return status, raw_bytes, None
+
+            try:
+                body = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                # 텍스트가 아닌 바이너리인 경우
+                return status, raw_bytes, None
+
             try:
                 parsed = json.loads(body)
             except Exception:
@@ -191,6 +203,19 @@ class StateChecker:
         self.results: List[CheckResult] = []
         self.current_metrics: Dict[str, Any] = {}
 
+    def is_path_excluded(self, rel_posix: str, excludes: List[str]) -> bool:
+        """경로가 제외 목록에 해당하는지 판별합니다.
+        루트의 'app' 디렉토리는 하위의 'backend/app'과 혼동되지 않도록 루트 매칭만 수행합니다.
+        """
+        parts = rel_posix.split("/")
+        for ex in excludes:
+            if ex == "app":
+                if rel_posix == "app" or rel_posix.startswith("app/"):
+                    return True
+            elif ex in parts or rel_posix == ex or rel_posix.startswith(f"{ex}/"):
+                return True
+        return False
+
     def get_target_files(self) -> List[Path]:
         """scan_dirs 대상 파일 중 exclude 및 legacy_allowed_files 필터링 목록을 구합니다."""
         scan_dirs = [REPO_ROOT / d for d in self.config.get("scan_dirs", [])]
@@ -207,12 +232,12 @@ class StateChecker:
                 # Exclude 디렉토리 가지치기
                 dirs[:] = [
                     d for d in dirs
-                    if d not in excludes and not any(ex in Path(root, d).as_posix() for ex in excludes)
+                    if not self.is_path_excluded(Path(root, d).relative_to(REPO_ROOT).as_posix(), excludes)
                 ]
                 for file in files:
                     p = Path(root, file)
                     rel = p.relative_to(REPO_ROOT).as_posix()
-                    if any(ex in rel for ex in excludes):
+                    if self.is_path_excluded(rel, excludes):
                         continue
                     if rel in legacy_allowed:
                         continue
@@ -649,6 +674,7 @@ class StateChecker:
         res = CheckResult("A7", "Python 문법 검사")
         target_py_files = [p for p in self.get_target_files() if p.suffix == ".py"]
         syntax_errors = []
+        checked_list = [p.relative_to(REPO_ROOT).as_posix() for p in target_py_files]
 
         for p in target_py_files:
             rel = p.relative_to(REPO_ROOT).as_posix()
@@ -660,7 +686,11 @@ class StateChecker:
                 syntax_errors.append(f"{rel}: {e}")
 
         res.metrics["checked_files"] = len(target_py_files)
+        res.metrics["checked_files_list"] = sorted(checked_list)
         res.metrics["syntax_errors"] = syntax_errors
+
+        for fpath in sorted(checked_list):
+            res.details.append(f"검사 대상 파일: {fpath}")
 
         if syntax_errors:
             res.fail(f"문법 오류 파일 발견 ({len(syntax_errors)}건)", "; ".join(syntax_errors[:3]))
@@ -698,6 +728,9 @@ class StateChecker:
             return res
 
         if proc.returncode != 0 and "passed" not in output and "failed" not in output:
+            if "No module named pytest" in output:
+                res.fail("단위 테스트 실행 실패: pytest 미설치 → pipeline 이미지 재빌드 필요 (`docker compose build pipeline`)", output.strip()[:300])
+                return res
             if any(err in output for err in ("failed to connect", "docker API", "Access is denied", "unknown shorthand flag", "cannot find", "Error loading config")):
                 res.skip(f"Docker 실행 환경 접근 불가 (SKIP): {output.strip()[:100]}")
                 return res
@@ -767,26 +800,51 @@ class StateChecker:
         # 4. 요소 3개 샘플링 상세 및 크롭 이미지 검사
         el_status, el_body, el_err = safe_http_request("GET", f"{self.api_base}/api/elements?limit=3")
         sample_failures = 0
+        failure_details: List[str] = []
+
         if el_status == 200 and isinstance(el_body, list) and el_body:
             for item in el_body[:3]:
                 eid = item.get("element_id")
                 img_path = item.get("image_path")
                 if eid:
-                    d_st, _, _ = safe_http_request("GET", f"{self.api_base}/api/elements/{eid}")
+                    elem_url = f"{self.api_base}/api/elements/{eid}"
+                    d_st, _, d_err = safe_http_request("GET", elem_url)
                     if d_st != 200:
                         sample_failures += 1
+                        failure_details.append(f"요소 상세 조회 실패: {elem_url} (HTTP {d_st}, {d_err or '오류'})")
                 if img_path:
                     img_url = f"{self.api_base}{img_path}" if img_path.startswith("/") else f"{self.api_base}/{img_path}"
-                    im_st, _, _ = safe_http_request("GET", img_url)
+                    im_st, _, im_err = safe_http_request("GET", img_url)
                     if im_st != 200:
                         sample_failures += 1
+                        failure_details.append(f"크롭 이미지 조회 실패: {img_url} (HTTP {im_st}, {im_err or '오류'})")
 
         res.metrics["sample_failures"] = sample_failures
-        base_failures = (self.baseline or {}).get("B1", {}).get("sample_failures", 0)
-        if sample_failures > base_failures:
-            res.fail(f"샘플 요소/이미지 조회 실패 증가 ({base_failures} ➔ {sample_failures})")
+        res.metrics["sample_failure_details"] = failure_details
+
+        base_failures = (self.baseline or {}).get("B1", {}).get("sample_failures")
+        if base_failures is None:
+            # 기준선이 없을 때: 0이 아니면 실패
+            if sample_failures > 0:
+                res.fail(
+                    f"샘플 요소/이미지 조회 실패 ({sample_failures}건)",
+                    "; ".join(failure_details)
+                )
+            else:
+                res.pass_(f"통과 (포인트 수: {backend_count}건, 필터/상세/이미지 정상)")
         else:
-            res.pass_(f"통과 (포인트 수: {backend_count}건, 필터/상세 정상)")
+            if sample_failures > base_failures:
+                res.fail(
+                    f"샘플 요소/이미지 조회 실패 증가 ({base_failures} ➔ {sample_failures})",
+                    "; ".join(failure_details)
+                )
+            elif sample_failures > 0:
+                res.warn(
+                    f"샘플 요소/이미지 조회 실패 ({sample_failures}건, 기준선 {base_failures}건)",
+                    "; ".join(failure_details)
+                )
+            else:
+                res.pass_(f"통과 (포인트 수: {backend_count}건, 필터/상세/이미지 정상)")
 
         return res
 
@@ -1021,8 +1079,24 @@ class StateChecker:
 
     def save_baseline(self):
         """--save-baseline 처리: 실패 검증 후 콘솔 yes 확인 시 저장"""
-        if any(r.status == "FAIL" for r in self.results):
+        if self.mode != "full":
+            print("\n[FAIL] 기준선은 --full 검사에서만 저장할 수 있습니다. (현재 모드: quick)")
+            print("힌트: python scripts/check_state.py --full --save-baseline 형식으로 실행하세요.")
+            sys.exit(1)
+
+        failed_items = [r for r in self.results if r.status == "FAIL"]
+        if failed_items:
             print("\n[FAIL] 실패 항목이 있어 기준선을 저장할 수 없습니다. 문제를 먼저 해결하세요.")
+            for r in failed_items:
+                print(f"  - {r.code}. {r.title}: {r.message}")
+            sys.exit(1)
+
+        skipped_items = [r for r in self.results if r.status == "SKIP"]
+        if skipped_items:
+            print("\n[FAIL] 건너뛴(SKIP) 항목이 있어 기준선을 저장할 수 없습니다.")
+            print("기준선을 저장하려면 Docker 및 모든 서비스가 정상 작동하여 모든 검사(A1~B4)가 통과되어야 합니다.")
+            for r in skipped_items:
+                print(f"  - {r.code}. {r.title}: {r.message}")
             sys.exit(1)
 
         print("\n" + "=" * 72)
