@@ -196,6 +196,26 @@
     - **단위 테스트 신설 및 100% 통과 (`figindex/pipeline/test_schemas_table_units.py`)**:
       - 기존 형식 호환, 행별 단위, 열별 단위, 행 우선순위, 유효하지 않은 키 검증 실패, v2 컬렉션(`figindex_elements_v2`) 실데이터 전수 검증 등 6종 테스트 작성 완료 (파이프라인 전체 단위 테스트 54건 100% 통과).
 
+18. **PDF 텍스트 레이어 좌표 순서 정렬 추출 모듈 구축 (`figindex/pipeline/pdf_text.py`, 2026-11-13)**
+    - **배경 해결**: 증권 리포트 등에서 글자 드로잉 순서와 화면 표시 순서가 불일치하여 텍스트가 꼬이는 문제(예: `68.6%` ➔ `686% .`)를 글자 바운딩 박스 기반 2차원 좌표 정렬로 정상 복원.
+    - **핵심 함수 구현 (`pdf_text.py`)**:
+      - `read_text_in_bbox(page, bbox) -> str`: 정규화 bbox를 `coords.norm_to_pt`로 변환 후, `rawjson` 글자 좌표 추출 ➔ 세로 위치(y_mid) 글자 높이 절반 이내 줄 묶기(위➔아래) ➔ 줄 내 x좌표 정렬(왼쪽➔오른쪽) ➔ 단어 간격(gap) 공백 복원.
+      - `has_text_layer(page) -> bool`: 스캔본/이미지 전용 페이지와 실제 텍스트 페이지 판별.
+    - **규칙 반영 (`docs/glossary.md` 7절, `AGENTS.md` 5절, 팀장 명시 승인)**:
+      - PDF 텍스트 읽기는 `pipeline/pdf_text.py` 함수만 사용하도록 표준화.
+    - **단위 테스트 4종 작성 및 100% 통과 (`figindex/pipeline/test_pdf_text.py`)**:
+      - 뒤섞인 순서로 렌더링된 텍스트(`68.6%`) 복원, 멀티라인 위➔아래 순서 보존, bbox 영역 클리핑, 텍스트 유무 판별 검증 완료 (파이프라인 전체 단위 테스트 58건 100% 통과).
+
+19. **상태 검사기 A1 수정 금지 파일 감시 보강 및 --allow-protected 도입 (2026-11-13)**
+    - **원인 해결**: 기존 `--expect`에 포함된 파일이 `protected_files`에 해당하더라도 검사를 우회해버리던 결함을 수정하고, 저장소 루트 기준 `/` 상대 경로 정규화(`normalize_repo_path`)를 적용.
+    - **안전 기능 추가 (`scripts/check_state.py`, `scripts/check_config.json`)**:
+      - 수정 금지 파일 변경 시 즉시 FAIL 발생 및 파일명 상세 출력.
+      - 검사기 자체 보호: `check_config.json`의 `protected_files`에 `scripts/check_state.py` 추가.
+      - `--allow-protected` 옵션: 팀장 승인된 수정 금지 파일에 한해 FAIL 대신 WARN 처리 및 리포트 상단 경고 박스 기록.
+      - `--save-baseline`과의 상호 배타성 강제: `--allow-protected` 사용 시 기준선 저장 차단.
+    - **A1 자체 단위 테스트 신설 (`scripts/test_check_state_a1.py`, 7개 케이스 100% 통과)**:
+      - 수정 금지 파일 변경 시 FAIL, Windows 역슬래시 경로 정규화, allow-protected 허용/미허용 분기, 일반 파일 PASS, expect 우회 차단 등 검증 완료.
+
 ---
 
 ## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
