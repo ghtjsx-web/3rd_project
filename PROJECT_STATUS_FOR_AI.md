@@ -164,6 +164,27 @@
       - 이전 후 검수 상태: `APPROVED` 386건 (83.0%), `PENDING_REVIEW` 79건 (17.0%, TableData 검증 실패 10건 포함).
       - Qdrant 실데이터 쓰기/수정 0건 유지 (읽기 전용 보장, `check_state.py --full` 11개 전 항목 PASS 확인).
 
+16. **migrate_to_v2.py --execute 잠금 해제, 실행 경로 점검 및 검증 테스트 구축 (2026-11-13)**
+    - **임시 잠금 해제 및 안전장치 강화 (`figindex/pipeline/migrate_to_v2.py`)**:
+      - 5a-1 단계의 임시 차단 코드 제거 (`--execute` 정식 활성화).
+      - `--confirm <target 이름>` 안전 플래그 추가 (대상 컬렉션 이름 불일치 시 즉시 차단).
+      - `--target` 이름 검증(`_v2` 종료 강제), `--doc-map` 필수 검증 유지.
+      - 대상 컬렉션 중복 방지(`check_target_exists`): target 컬렉션 이미 존재 시 덮어쓰기 금지 예외 발생.
+      - 예상값(대상 525, 제외 60, 이전 465, 문서 113, 누락 0) 검증: 불일치 시 **쓰기 전에 즉시 중단**.
+    - **실행 경로 정밀 구현**:
+      - 원본 벡터 설정(`dense` 1536 Cosine, `sparse` BM25) 및 payload 인덱스를 읽어 동일 규격으로 v2 컬렉션 생성.
+      - 페이로드 인덱스 생성 시 필드 변경표(`title_or_caption` ➔ `caption`, `structured_data` ➔ `table_data` 등) 적용 및 표준 인덱스 보장.
+      - 100건 단위 배치 upsert (`with_vectors=True`로 수집된 dense/sparse 벡터 보존 및 원본 point id 유지).
+      - `doc_id_map.json`, `dropped_elements_*.csv`, `execute_v2_*.md` 자동 저장.
+      - **쓰기 후 검증(Post-Verification)**: v2 포인트 수 465건, review_status 분포, 샘플 5건의 dense/sparse 벡터(`tol=1e-4` 부동소수점 정밀도 대응) 비교 검증 내장. 불일치 시 리포트에 붉은색 경고 표시(v2는 분석용으로 보존).
+    - **단위 테스트 4종 추가 구현 및 100% 통과 (`figindex/pipeline/test_migrate_to_v2.py`)**:
+      - `QdrantClient(":memory:")` 가짜 컬렉션 기반 execute 모드 실행, v2 생성/개수/벡터/페이로드 변환 및 원본 컬렉션 불변 검증.
+      - 대상 컬렉션 기등록 시 거부 검증.
+      - 예상값 불일치 시 쓰기 전 중단 검증.
+      - `--confirm` 불일치 시 차단 동작 검증.
+      - `migration_dir` 생성자 파라미터화로 `tmp_path` 임시 폴더 완벽 격리 (실제 `/data/migration/` 파일 오염 0건, 테스트 전후 스냅샷 일치 검증 통과).
+      - 파이프라인 전체 단위 테스트 48건 100% 통과.
+
 ---
 
 ## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
