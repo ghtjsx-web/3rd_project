@@ -69,3 +69,6 @@ Thumbs.db
 *.swp
 *.swo
 *.log
+
+# Check state reports
+.check_reports/

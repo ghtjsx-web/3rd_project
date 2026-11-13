@@ -57,10 +57,12 @@
 - 한글은 화면 문구와 주석에만 쓴다.
 
 ## 7. 수정 금지 파일
-- `figindex/shared/schemas.py`, `docs/glossary.md`, `AGENTS.md`는 사용자가 명시적으로 요청한 경우에만 수정한다. 수정할 때는 세 파일의 내용이 서로 맞는지 확인한다.
+- `figindex/shared/schemas.py`, `docs/glossary.md`, `AGENTS.md`, `scripts/check_config.json`, `scripts/check_baseline.json`은 사용자가 명시적으로 요청한 경우에만 수정한다. 수정할 때는 관련 파일의 내용이 서로 맞는지 확인한다.
+- AI는 `--save-baseline`을 실행하지 않는다. 기준선 저장은 팀장만 한다.
 
 ## 8. 작업 보고
 작업이 끝나면 다음을 짧게 보고한다.
 - 바꾼 파일 목록
 - 새로 쓴 schemas.py 항목이 있는지 (있으면 안 됨, 1절 참고)
 - schemas.py 추가가 필요하다고 판단한 항목
+- `python scripts/check_state.py --quick --expect "바꾼 파일 목록"` 결과 요약 (FAIL이 있으면 고친 뒤 다시 실행)

@@ -1,0 +1,38 @@
+{
+  "scan_dirs": [
+    "figindex/backend",
+    "figindex/pipeline",
+    "figindex/frontend/app",
+    "figindex/shared",
+    "scripts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "__pycache__",
+    "figindex/data",
+    "app",
+    "docs",
+    "scripts/check_state.py"
+  ],
+  "legacy_allowed_files": [
+    "figindex/shared/schemas_legacy.py",
+    "scripts/migrate_source_target.py"
+  ],
+  "protected_files": [
+    "AGENTS.md",
+    "PROJECT_RULES.md",
+    "docs/glossary.md",
+    "figindex/shared/schemas.py",
+    "scripts/check_config.json",
+    "scripts/check_baseline.json"
+  ],
+  "api_base": "http://localhost:8000",
+  "qdrant_url": "http://localhost:6333",
+  "collection": "figindex_elements",
+  "strict_extra": [
+    "VisualElementSchema",
+    "TableStructure"
+  ]
+}
+
