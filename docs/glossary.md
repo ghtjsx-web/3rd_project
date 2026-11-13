@@ -136,6 +136,16 @@ DocLayout-YOLO의 클래스 이름은 모델 출력 그대로 씁니다. 1단계
 
 `rows`의 키는 `columns` 값과 글자 하나까지 같아야 합니다.
 
+### 단위 규칙
+- **표 전체가 한 단위**: `unit`에만 기록합니다.
+- **행마다 단위가 다름**: `unit_by_row`(행 라벨 ➔ 단위)에 기록하고, 이때 `unit`은 비웁니다(`None`).
+- **열마다 단위가 다름**: `unit_by_column`(열 이름 ➔ 단위)에 기록하고, 이때 `unit`은 비웁니다(`None`).
+- **셀 단위 구하기**: 다른 코드에서 직접 단위를 판단하지 않고 반드시 `TableData.unit_for(row_label, column)` 메서드로만 구합니다 (`unit_by_row` ➔ `unit_by_column` ➔ `unit` 순 탐색).
+- **예시 (실적표)**:
+  - `unit_by_row = {"매출액": "십억원", "영업이익률": "%", "EPS": "원"}`
+  - `unit = None`
+  - 셀 단위 조회: `td.unit_for("매출액", "2025E")` ➔ `"십억원"`, `td.unit_for("EPS", "2025E")` ➔ `"원"`
+
 ## 10. 엔티티 사전 (`EntityEntry`)
 
 - 파일: `data/entity_dictionary.csv` (UTF-8), 경로 상수 `ENTITY_DICTIONARY_PATH`

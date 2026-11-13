@@ -12,7 +12,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +189,51 @@ class TableData(BaseModel):
     """
     columns: List[str] = Field(..., description="열 헤더 목록 (원문 그대로, 예: ['구분', '2024', '2025E'])")
     rows: List[Dict[str, CellValue]] = Field(..., description="행 목록. 키는 columns 값과 정확히 일치")
-    unit: Optional[str] = Field(None, description="수치 단위 (예: 억 원, %, 원)")
+    unit: Optional[str] = Field(None, description="수치 단위 (표 전체가 한 단위일 때만. 섞여 있으면 None)")
+    unit_by_row: Dict[str, str] = Field(default_factory=dict, description="행별 단위 (행 라벨 -> 단위)")
+    unit_by_column: Dict[str, str] = Field(default_factory=dict, description="열별 단위 (열 이름 -> 단위)")
     period_labels: List[str] = Field(default_factory=list, description="기간 라벨, 원문 그대로 (추정치 E 포함)")
+
+    @model_validator(mode="after")
+    def validate_units(self) -> "TableData":
+        # 1. unit_by_column 키 검증: columns 값 중 하나여야 함
+        cols_set = set(self.columns)
+        for col_key in self.unit_by_column:
+            if col_key not in cols_set:
+                raise ValueError(
+                    f"unit_by_column의 키 '{col_key}'가 columns({self.columns})에 존재하지 않습니다."
+                )
+
+        # 2. unit_by_row 키 검증: 실제 행 라벨(첫 열 값) 중 하나여야 함
+        if self.unit_by_row:
+            first_col = self.columns[0] if self.columns else None
+            row_labels = set()
+            if first_col:
+                for r in self.rows:
+                    val = r.get(first_col)
+                    if val is not None:
+                        row_labels.add(str(val))
+            for row_key in self.unit_by_row:
+                if row_key not in row_labels:
+                    raise ValueError(
+                        f"unit_by_row의 키 '{row_key}'가 행 라벨 목록({sorted(list(row_labels))})에 존재하지 않습니다."
+                    )
+
+        return self
+
+    def unit_for(self, row_label: str, column: str) -> Optional[str]:
+        """셀(row_label, column)의 단위를 찾습니다.
+
+        우선순위: unit_by_row -> unit_by_column -> unit
+        """
+        row_str = str(row_label)
+        if row_str in self.unit_by_row:
+            return self.unit_by_row[row_str]
+        if row_label in self.unit_by_row:
+            return self.unit_by_row[row_label]
+        if column in self.unit_by_column:
+            return self.unit_by_column[column]
+        return self.unit
 
 
 class ConfidenceSignals(BaseModel):
