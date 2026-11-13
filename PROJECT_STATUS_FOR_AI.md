@@ -22,6 +22,24 @@
   - 로컬 프로덕션 검증용 `figindex/docker-compose.prod.yml` 별도 구성 완료
   - Onpod 배포용 기본값(`frontend/Dockerfile`의 `NEXT_PUBLIC_API_URL=https://figindex-api.onpod.ai`, `backend/Dockerfile`의 `QDRANT_MODE=local`)은 유지됨
 
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
+
 ---
 
 ## 2. 가장 중요한 구조적 특징 (AI 분석 시 필독)
@@ -43,6 +61,24 @@
   - `title_or_caption` → 문서 `doc_title`, 요소 `caption`
   - `structured_data` → `table_data` (`TableData`)
   - `bbox` → `[x0, y0, x1, y1]` (0~1 정규화, 좌상단 원점), 좌표 변환은 `figindex/shared/coords.py` 사용 규칙(프롬프트 3 작성 대상)
+
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
 
 ---
 
@@ -216,6 +252,42 @@
     - **A1 자체 단위 테스트 신설 (`scripts/test_check_state_a1.py`, 7개 케이스 100% 통과)**:
       - 수정 금지 파일 변경 시 FAIL, Windows 역슬래시 경로 정규화, allow-protected 허용/미허용 분기, 일반 파일 PASS, expect 우회 차단 등 검증 완료.
 
+
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - legacy_allowed_files에 migrate_to_v2.py, udit_doc_names.py를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 get_target_files()에서 legacy_allowed_files를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (scripts/check_state.py)**:
+      - get_target_files(include_legacy=False): A7 문법 검사 시 include_legacy=True로 호출하여 legacy_allowed_files도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: 엄격 X건 (기준선 Y건, Z건 감소/증가) 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - legacy_allowed_files와 exclude 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (scripts/test_check_state_a2.py, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - legacy_allowed_files 파일은 A2에서 0건으로 집계 검증.
+      - legacy_allowed_files 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
+
 ---
 
 ## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
@@ -237,6 +309,24 @@
    - `backend/app/main.py`는 `review_action`, `caption`, `table_data`, `review_status`를 수용하도록 업데이트되었으나, 실제 Qdrant 저장 페이로드 및 프론트엔드 연동은 여전히 `title_or_caption`, `structured_data` 기반으로 동작 중입니다. 프롬프트 4 & 5 실행 전까지는 양방향 호환을 유지해야 합니다.
 - **종합 판단**: 기준 스키마 위치 이전(프롬프트 2) 및 공통 좌표 모듈 구현(프롬프트 3)이 완료되었으므로, 다음 단계인 **프롬프트 4(코드 레벨 필드명 치환: `title_or_caption` → `caption`, `structured_data` → `table_data`, `bbox` 규격 전환)**로 안전하게 진행 가능합니다.
 
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
+
 ---
 
 ## 4. 현재 데이터 및 검증 현황
@@ -250,6 +340,24 @@
 - **Qdrant 로컬 (`figindex/data/qdrant_local`)**: 118 points (위 525건에 모두 포함됨)
 - **엔티티 사전 (`figindex/data/entity_dictionary.csv`)**: 현재 헤더 + `SK하이닉스` 1행만 등록됨
 - **프론트엔드(`http://localhost:3000`)**: 헤드리스 Chrome 확인 기준 `Qdrant 색인: 525건`, `100개 표시 중`, `DEV MODE`, 오류 배너 없음 확인
+
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
 
 ---
 
@@ -287,6 +395,24 @@
     └── data/                           # pdfs(118), crops(578), qdrant(525), qdrant_local(118)
 ```
 
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
+
 ---
 
 ## 6. 다음 단계 / 검토가 필요한 과제
@@ -302,6 +428,24 @@
    - `entity_dictionary.csv` 데이터 확충 및 고유명사 치환 적용.
 4. **등록 작업·검수 이력·평가 고도화**
    - `Batch`, `Document`, `ReviewLog`(추가 전용 이력) 및 `docs/glossary.md` 12절 지표(`crop_recall`, `table_valid_rate`, `cell_accuracy`, `precision_at_5` 등) 기반 정량 평가 연결
+
+20. **상태 검사기 A2·A7 보완 (파일별 개수 표시, 제외 목록 적용 범위 분리, 2026-11-13)**
+    - **원인 분석**:
+      - `legacy_allowed_files`에 `migrate_to_v2.py`, `audit_doc_names.py`를 추가했을 때 엄격 금지 이름이 기준선(131건) 그대로 유지된 이유는 기준선 생성 시점에 해당 파일들이 포함되어 있지 않았기 때문(기준선=131건, 기존 파일 12개 합계=131건). 콘솔 메시지에 현재치와 기준선 비교가 없어 직관적 파악이 어려웠음.
+      - A7 문법 검사에서 대상 파일 수가 27 ➔ 25로 줄어든 원인은 `get_target_files()`에서 `legacy_allowed_files`를 무조건 제외했기 때문. 문법 검사는 레거시 파일도 포함해야 함.
+    - **기능 개선 (`scripts/check_state.py`)**:
+      - `get_target_files(include_legacy=False)`: A7 문법 검사 시 `include_legacy=True`로 호출하여 `legacy_allowed_files`도 문법 컴파일 대상에 정상 포함 (25 ➔ 29~30개 파일).
+      - A2 콘솔 출력 메시지 개선: `엄격 X건 (기준선 Y건, Z건 감소/증가)` 형태로 현재값과 기준선 수치 명시.
+      - 리포트 마크다운(.md) 대폭 보강:
+        - `legacy_allowed_files`와 `exclude` 목록 구분 명시.
+        - 엄격 금지 이름 파일별 상위 15개 표 (순위, 파일명, 총 건수, 세부 금지 이름별 건수).
+        - 일반 금지 이름 파일별 상위 10개 표.
+        - A7 문법 검사 대상 파일 목록 전체 기록.
+    - **단위 테스트 신설 (`scripts/test_check_state_a2.py`, 4개 케이스 통과, 전체 11개 검사 통과)**:
+      - `legacy_allowed_files` 파일은 A2에서 0건으로 집계 검증.
+      - `legacy_allowed_files` 파일이 A7 문법 검사에는 포함됨 검증.
+      - A2 콘솔 메시지 포맷 요구사항 검증.
+      - A2 메트릭 정렬 및 구조화 검증.
 
 ---
 
