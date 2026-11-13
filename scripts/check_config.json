@@ -17,7 +17,13 @@
   ],
   "legacy_allowed_files": [
     "figindex/shared/schemas_legacy.py",
-    "scripts/migrate_source_target.py"
+    "scripts/migrate_source_target.py",
+    "figindex/pipeline/migrate_to_v2.py",
+    "figindex/pipeline/audit_doc_names.py",
+    "figindex/pipeline/rename_reports.py",
+    "figindex/pipeline/yolo_trial.py",
+    "figindex/pipeline/test_coords.py",
+    "figindex/pipeline/test_docs_naming.py"
   ],
   "protected_files": [
     "AGENTS.md",

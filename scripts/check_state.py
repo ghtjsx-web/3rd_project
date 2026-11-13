@@ -293,12 +293,14 @@ class StateChecker:
                 return True
         return False
 
-    def get_target_files(self) -> List[Path]:
-        """scan_dirs 대상 파일 중 exclude 및 legacy_allowed_files 필터링 목록을 구합니다."""
+    def get_target_files(self, include_legacy: bool = False) -> List[Path]:
+        """scan_dirs 대상 파일 중 exclude 및 legacy_allowed_files 필터링 목록을 구합니다.
+        include_legacy=True인 경우 legacy_allowed_files는 제외하지 않고 포함합니다.
+        """
         scan_dirs = [REPO_ROOT / d for d in self.config.get("scan_dirs", [])]
         excludes = self.config.get("exclude", [])
         legacy_allowed = {
-            Path(p).as_posix() for p in self.config.get("legacy_allowed_files", [])
+            normalize_repo_path(p) for p in self.config.get("legacy_allowed_files", [])
         }
 
         collected: List[Path] = []
@@ -309,14 +311,14 @@ class StateChecker:
                 # Exclude 디렉토리 가지치기
                 dirs[:] = [
                     d for d in dirs
-                    if not self.is_path_excluded(Path(root, d).relative_to(REPO_ROOT).as_posix(), excludes)
+                    if not self.is_path_excluded(normalize_repo_path(Path(root, d).relative_to(REPO_ROOT).as_posix()), excludes)
                 ]
                 for file in files:
                     p = Path(root, file)
-                    rel = p.relative_to(REPO_ROOT).as_posix()
+                    rel = normalize_repo_path(p.relative_to(REPO_ROOT).as_posix())
                     if self.is_path_excluded(rel, excludes):
                         continue
-                    if rel in legacy_allowed:
+                    if not include_legacy and rel in legacy_allowed:
                         continue
                     if p.suffix in (".py", ".ts", ".tsx"):
                         collected.append(p)
@@ -456,10 +458,25 @@ class StateChecker:
                 if file_gen:
                     general_counts[rel] = file_gen
 
+        sorted_strict_files = sorted(
+            [{"file": f, "total": sum(counts.values()), "counts": counts} for f, counts in strict_counts.items()],
+            key=lambda x: x["total"],
+            reverse=True
+        )
+        sorted_general_files = sorted(
+            [{"file": f, "total": sum(counts.values()), "counts": counts} for f, counts in general_counts.items()],
+            key=lambda x: x["total"],
+            reverse=True
+        )
+
         res.metrics["total_strict"] = total_strict
         res.metrics["total_general"] = total_general
         res.metrics["strict_counts"] = strict_counts
         res.metrics["general_counts"] = general_counts
+        res.metrics["sorted_strict_files"] = sorted_strict_files
+        res.metrics["sorted_general_files"] = sorted_general_files
+        res.metrics["legacy_allowed_files"] = sorted(list(self.config.get("legacy_allowed_files", [])))
+        res.metrics["exclude_patterns"] = sorted(list(self.config.get("exclude", [])))
 
         # 기준선 비교
         baseline_a2 = (self.baseline or {}).get("A2", {})
@@ -468,24 +485,30 @@ class StateChecker:
 
         if base_strict is not None:
             if total_strict > base_strict:
+                diff = total_strict - base_strict
                 res.fail(
-                    f"엄격 금지 이름이 기준선 대비 증가했습니다 ({base_strict} ➔ {total_strict})",
-                    f"증가 건수: +{total_strict - base_strict}"
+                    f"엄격 금지 이름 증가: 엄격 {total_strict}건 (기준선 {base_strict}건, {diff}건 증가), 일반 {total_general}건",
+                    f"증가 건수: +{diff}"
                 )
             else:
                 # 파일별 신규 출현 확인
                 new_files = set(strict_counts.keys()) - set(base_strict_counts.keys())
                 if new_files:
                     res.fail(
-                        f"기준선에 없던 파일({len(new_files)}개)에서 엄격 금지 이름이 발견되었습니다.",
+                        f"기준선 외 신규 파일({len(new_files)}개)에서 엄격 금지 이름 발견: 엄격 {total_strict}건 (기준선 {base_strict}건, 유지), 일반 {total_general}건",
                         f"신규 파일: {', '.join(sorted(list(new_files))[:3])}"
                     )
                 elif total_strict < base_strict:
-                    res.pass_(f"개선: 엄격 금지 이름 {base_strict - total_strict}건 감소 (현재 {total_strict}건)")
+                    res.pass_(f"개선: 엄격 {total_strict}건 (기준선 {base_strict}건, {base_strict - total_strict}건 감소), 일반 {total_general}건")
                 else:
-                    res.pass_(f"통과 (엄격 {total_strict}건 유지, 일반 {total_general}건)")
+                    res.pass_(f"통과 (엄격 {total_strict}건 (기준선 {base_strict}건, 유지), 일반 {total_general}건)")
         else:
             res.pass_(f"기준선 없음: 현재 엄격 {total_strict}건, 일반 {total_general}건 측정됨")
+
+        # 세부 사항(details)에도 상위 파일 기록
+        for item in sorted_strict_files[:15]:
+            counts_str = ", ".join(f"{k}:{v}" for k, v in sorted(item["counts"].items(), key=lambda x: x[1], reverse=True))
+            res.details.append(f"엄격 [{item['total']}건] {item['file']} ({counts_str})")
 
         return res
 
@@ -728,9 +751,9 @@ class StateChecker:
         return res
 
     def run_check_a7_syntax(self) -> CheckResult:
-        """A7. 대상 Python 파일 전체 문법 컴파일 검사"""
+        """A7. 대상 Python 파일 전체 문법 컴파일 검사 (legacy_allowed_files 포함)"""
         res = CheckResult("A7", "Python 문법 검사")
-        target_py_files = [p for p in self.get_target_files() if p.suffix == ".py"]
+        target_py_files = [p for p in self.get_target_files(include_legacy=True) if p.suffix == ".py"]
         syntax_errors = []
         checked_list = [p.relative_to(REPO_ROOT).as_posix() for p in target_py_files]
 
@@ -747,6 +770,7 @@ class StateChecker:
         res.metrics["checked_files_list"] = sorted(checked_list)
         res.metrics["syntax_errors"] = syntax_errors
 
+        res.details.append(f"검사한 파일 수: {len(target_py_files)}개")
         for fpath in sorted(checked_list):
             res.details.append(f"검사 대상 파일: {fpath}")
 
@@ -1142,6 +1166,62 @@ class StateChecker:
                 lines.append("- **세부 내용**:")
                 for d in r.details:
                     lines.append(f"  - `{d}`")
+
+            # A2 특화 상세 리포트
+            if r.code == "A2":
+                lines.append("\n#### [A2 제외 파일 및 경로 목록]")
+                lines.append("- **legacy_allowed_files (금지 이름 검사 예외)**:")
+                legacy_files = self.config.get("legacy_allowed_files", [])
+                if legacy_files:
+                    for lf in legacy_files:
+                        lines.append(f"  - `{lf}`")
+                else:
+                    lines.append("  - (없음)")
+
+                lines.append("- **exclude (스캔 대상 전체 제외)**:")
+                exclude_paths = self.config.get("exclude", [])
+                if exclude_paths:
+                    for ep in exclude_paths:
+                        lines.append(f"  - `{ep}`")
+                else:
+                    lines.append("  - (없음)")
+
+                sorted_strict = r.metrics.get("sorted_strict_files", [])
+                lines.append(f"\n#### [A2 엄격 금지 이름 파일별 상위 15개] (총 {len(sorted_strict)}개 파일 중 상위)")
+                if sorted_strict:
+                    lines.append("| 순위 | 파일명 | 총 건수 | 세부 건수 |")
+                    lines.append("| :---: | :--- | :---: | :--- |")
+                    for idx, item in enumerate(sorted_strict[:15], 1):
+                        fpath = item["file"]
+                        total = item["total"]
+                        counts_str = ", ".join(f"`{k}`: {v}" for k, v in sorted(item["counts"].items(), key=lambda x: x[1], reverse=True))
+                        lines.append(f"| {idx} | `{fpath}` | **{total}** | {counts_str} |")
+                else:
+                    lines.append("- 엄격 금지 이름 검출 없음 (0건)")
+
+                sorted_gen = r.metrics.get("sorted_general_files", [])
+                lines.append(f"\n#### [A2 일반 금지 이름 파일별 상위 10개] (총 {len(sorted_gen)}개 파일 중 상위)")
+                if sorted_gen:
+                    lines.append("| 순위 | 파일명 | 총 건수 | 세부 건수 |")
+                    lines.append("| :---: | :--- | :---: | :--- |")
+                    for idx, item in enumerate(sorted_gen[:10], 1):
+                        fpath = item["file"]
+                        total = item["total"]
+                        counts_str = ", ".join(f"`{k}`: {v}" for k, v in sorted(item["counts"].items(), key=lambda x: x[1], reverse=True))
+                        lines.append(f"| {idx} | `{fpath}` | **{total}** | {counts_str} |")
+                else:
+                    lines.append("- 일반 금지 이름 검출 없음 (0건)")
+
+            # A7 특화 상세 리포트
+            if r.code == "A7":
+                checked_count = r.metrics.get("checked_files", 0)
+                checked_list = r.metrics.get("checked_files_list", [])
+                lines.append(f"\n#### [A7 문법 검사 대상 파일 목록] (총 {checked_count}개 파일)")
+                if checked_list:
+                    for cf in checked_list:
+                        lines.append(f"- `{cf}`")
+                else:
+                    lines.append("- 검사된 파일 없음")
 
         with open(report_file, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
