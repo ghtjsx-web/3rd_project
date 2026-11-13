@@ -185,6 +185,17 @@
       - `migration_dir` 생성자 파라미터화로 `tmp_path` 임시 폴더 완벽 격리 (실제 `/data/migration/` 파일 오염 0건, 테스트 전후 스냅샷 일치 검증 통과).
       - 파이프라인 전체 단위 테스트 48건 100% 통과.
 
+17. **TableData에 행별·열별 단위 필드 및 unit_for() 메서드 추가 (2026-11-13)**
+    - **스키마 확장 (`figindex/shared/schemas.py`, 팀장 승인 반영)**:
+      - `TableData`에 `unit_by_row: Dict[str, str]` (행 라벨 ➔ 단위) 및 `unit_by_column: Dict[str, str]` (열 이름 ➔ 단위) 필드 추가 (기본값 빈 dict).
+      - `unit` 필드 설명 명확화: 표 전체가 단일 단위일 때만 사용하며 단위 혼합 시 `None`.
+      - `model_validator` 검증: `unit_by_row` 키가 실제 첫 열(행 라벨)에 존재하는지, `unit_by_column` 키가 `columns`에 글자 하나까지 일치하는지 검증 (불일치 시 키 이름 포함 에러 발생).
+      - `unit_for(row_label, column) -> Optional[str]` 메서드 추가: `unit_by_row` ➔ `unit_by_column` ➔ `unit` 순 단일 진입점 조회 로직 캡슐화.
+    - **용어집 반영 (`docs/glossary.md` 9절)**:
+      - 단위 규칙 4원칙(단일 unit, 행별 unit_by_row, 열별 unit_by_column, unit_for() 단일 창구 조회) 및 실적표 예시 추가.
+    - **단위 테스트 신설 및 100% 통과 (`figindex/pipeline/test_schemas_table_units.py`)**:
+      - 기존 형식 호환, 행별 단위, 열별 단위, 행 우선순위, 유효하지 않은 키 검증 실패, v2 컬렉션(`figindex_elements_v2`) 실데이터 전수 검증 등 6종 테스트 작성 완료 (파이프라인 전체 단위 테스트 54건 100% 통과).
+
 ---
 
 ## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
