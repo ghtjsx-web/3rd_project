@@ -109,6 +109,13 @@
     - `fitz`, `numpy`, `ultralytics` 등 외부 의존성을 배제하여 백엔드/파이프라인 양쪽에서 경량 import 보장.
     - 단위 테스트 `figindex/pipeline/test_coords.py` 9개 케이스 작성 및 100% 통과 (기존 테스트 17건 포함 총 26건 통과).
 
+11. **상태 검사기 및 회귀 방지 기준선 체계 구축 (`scripts/check_state.py`, 2026-11-13)**
+    - 읽기 전용 검사기 `scripts/check_state.py` 및 설정 `scripts/check_config.json` 작성 완료.
+    - **A그룹 빠른 검사 (8종)**: A1(Git 변경 범위 및 protected_files 검사), A2(AGENTS.md 금지 이름 실시간 추출 및 엄격/일반 카운트), A3(직접 쓴 상태 문자열), A4(0.8 임계값 리터럴), A5(app.schemas 금지 및 schemas_legacy 참조 감시), A6(Pydantic 모델 중복 정의), A7(Python 문법 컴파일), A8(단위 테스트 결과 파싱).
+    - **B그룹 전체 검사 (3종, --full)**: B1(API/Qdrant 개수 일치 및 샘플 조회), B2(Qdrant 525건 스키마 분포 및 BBox 유효성), B3(프론트 TypeScript 타입 검사).
+    - `ALLOWED_REQUEST_PATTERNS` 화이트리스트를 통한 안전한 읽기 전용 HTTP 요청 강제.
+    - `AGENTS.md` 7절(수정 금지 파일에 check_config, check_baseline 추가 및 save-baseline AI 실행 금지 명시) 및 8절(작업 보고에 check_state 요약 의무화) 반영 완료.
+
 ---
 
 ## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
@@ -161,6 +168,8 @@
 │   ├── glossary.md                     # 용어집 (표 수치, 확신도, 좌표, 평가 지표 정의)
 │   └── FigIndex_통합_기획_설계서.md
 ├── scripts/
+│   ├── check_state.py                  # 형상·스키마·테스트 종합 상태 검사기
+│   ├── check_config.json               # 상태 검사기 설정 파일
 │   ├── local_to_server.py              # qdrant_local -> Qdrant 서버 이전
 │   ├── concurrency_check.py            # 동시 40건 API 안정성 검증
 │   ├── migrate_source_target.py        # 출처/대상 payload 마이그레이션
