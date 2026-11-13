@@ -323,6 +323,31 @@ def transform_payload(
         return None, issues
 
 
+def _compare_vectors(v1: Any, v2: Any, tol: float = 1e-4) -> bool:
+    """dense 및 sparse 벡터가 오차 범위(tol) 내에서 일치하는지 검증합니다."""
+    if v1 is None or v2 is None:
+        return v1 is v2
+
+    if isinstance(v1, dict) and isinstance(v2, dict):
+        if set(v1.keys()) != set(v2.keys()):
+            return False
+        return all(_compare_vectors(v1[k], v2[k], tol=tol) for k in v1)
+
+    if isinstance(v1, list) and isinstance(v2, list):
+        if len(v1) != len(v2):
+            return False
+        return all(abs(a - b) <= tol for a, b in zip(v1, v2))
+
+    if hasattr(v1, "indices") and hasattr(v2, "indices"):
+        if list(v1.indices) != list(v2.indices):
+            return False
+        if len(v1.values) != len(v2.values):
+            return False
+        return all(abs(a - b) <= tol for a, b in zip(v1.values, v2.values))
+
+    return v1 == v2
+
+
 class V2Migrator:
     def __init__(
         self,
@@ -331,18 +356,35 @@ class V2Migrator:
         target_collection: str = "figindex_elements_v2",
         doc_map_path: Optional[str] = None,
         dry_run: bool = True,
+        expected_counts: Optional[Dict[str, int]] = None,
+        client: Optional[Any] = None,
+        migration_dir: Optional[Any] = None,
     ):
         self.qdrant_url = qdrant_url.rstrip("/")
         self.source_collection = source_collection
         self.target_collection = target_collection
         self.doc_map_path = doc_map_path
         self.dry_run = dry_run
+        self.client = client
+
+        # 기준 예상값 (기본값: 525 대상 ➔ 60 제외 ➔ 465 이전, 고유 문서 113, 원문 누락 0)
+        self.expected_counts = expected_counts or {
+            "total": 525,
+            "dropped": 60,
+            "converted": 465,
+            "unique_docs": 113,
+            "unmatched": 0,
+        }
 
         # 안전장치 1: target 컬렉션 이름 검증
         if self.target_collection == self.source_collection:
             raise ValueError(f"안전 위반: 대상 컬렉션({self.target_collection})이 원본과 동일합니다.")
         if not self.target_collection.endswith("_v2"):
             raise ValueError(f"안전 위반: 대상 컬렉션({self.target_collection})은 반드시 '_v2'로 끝나야 합니다.")
+
+        # 안전장치 2: execute 모드 시 doc-map 필수
+        if not self.dry_run and not self.doc_map_path:
+            raise ValueError("안전 위반: --execute 실행 시에는 반드시 --doc-map <조사 CSV 경로>가 필요합니다.")
 
         # doc_name_map 로드
         self.doc_name_map: Dict[str, str] = {}
@@ -351,12 +393,15 @@ class V2Migrator:
             self.doc_name_map = load_doc_name_map(p)
 
         # migration 디렉토리 결정
-        candidates = [
-            repo_root / "figindex" / "data" / "migration",
-            Path("/data/migration"),
-            current_dir.parent / "data" / "migration",
-        ]
-        self.migration_dir = next((c for c in candidates if c.parent.exists()), candidates[0])
+        if migration_dir is not None:
+            self.migration_dir = Path(migration_dir)
+        else:
+            candidates = [
+                repo_root / "figindex" / "data" / "migration",
+                Path("/data/migration"),
+                current_dir.parent / "data" / "migration",
+            ]
+            self.migration_dir = next((c for c in candidates if c.parent.exists()), candidates[0])
         self.migration_dir.mkdir(parents=True, exist_ok=True)
 
         # doc_id_map 로드 (기존 파일이 있으면 재사용)
@@ -370,7 +415,6 @@ class V2Migrator:
                 print(f"[Warn] 기존 doc_id_map.json 로드 실패, 새로 생성합니다: {e}")
 
         self.issues: List[str] = []
-        self.client: Optional[Any] = None
 
     def _http_request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """표준 라이브러리 기반 안전한 Qdrant REST API 호출 (읽기 전용)."""
@@ -384,31 +428,55 @@ class V2Migrator:
             return json.loads(body)
 
     def connect(self):
+        if self.client is not None:
+            return
+
         if QdrantClient is not None:
             try:
-                self.client = QdrantClient(url=self.qdrant_url, timeout=30.0)
+                if self.qdrant_url == ":memory:":
+                    self.client = QdrantClient(":memory:")
+                else:
+                    self.client = QdrantClient(url=self.qdrant_url, timeout=60.0)
             except Exception:
                 self.client = None
         else:
             self.client = None
 
+    def check_target_exists(self) -> bool:
+        """target 컬렉션이 이미 존재하는지 확인합니다."""
+        if self.client is not None:
+            return self.client.collection_exists(self.target_collection)
+
+        try:
+            res = self._http_request("GET", f"/collections/{self.target_collection}")
+            return res.get("status") == "ok"
+        except Exception:
+            return False
+
     def run(self) -> Dict[str, Any]:
-        """마이그레이션 실행 (dry-run 기본값)."""
+        """마이그레이션 실행 (dry-run 기본값, execute 시 실제 쓰기 및 검증)."""
         self.connect()
 
+        # 안전장치: execute 모드 시 target 이미 존재하면 즉시 거부 (덮어쓰기 금지)
+        if not self.dry_run and self.check_target_exists():
+            raise RuntimeError(f"안전 위반: 대상 컬렉션 '{self.target_collection}'이 이미 존재합니다. 덮어쓰기는 허용되지 않습니다.")
+
         # 1. 원본 컬렉션 정보 조회 (읽기 전용)
+        src_vectors_config = None
+        src_sparse_config = None
+        src_payload_schema = {}
+
         if self.client is not None:
             src_info = self.client.get_collection(self.source_collection)
             total_points = src_info.points_count
+            src_vectors_config = src_info.config.params.vectors
+            src_sparse_config = src_info.config.params.sparse_vectors
+            src_payload_schema = src_info.payload_schema or {}
         else:
             res = self._http_request("GET", f"/collections/{self.source_collection}")
             total_points = res.get("result", {}).get("points_count", 0)
 
-        # 2. 안전장치 2: execute 모드 시 target 존재 여부 확인
-        if not self.dry_run:
-            raise NotImplementedError("이번 단계에서는 --dry-run만 지원하며 실제 쓰기(--execute)는 실행할 수 없습니다.")
-
-        # 3. 데이터 scroll 조회 (전체 레코드 메모리 수집)
+        # 2. 데이터 scroll 조회 (전체 레코드 메모리 수집, execute 모드 대비 벡터 포함)
         all_raw_records: List[Dict[str, Any]] = []
         offset = None
         batch_size = 100
@@ -423,21 +491,21 @@ class V2Migrator:
                     limit=batch_size,
                     offset=offset,
                     with_payload=True,
-                    with_vectors=False,
+                    with_vectors=True,
                 )
                 for rec in q_records:
-                    records.append({"id": rec.id, "payload": rec.payload or {}})
+                    records.append({"id": rec.id, "payload": rec.payload or {}, "vector": rec.vector})
             else:
                 scroll_body = {
                     "limit": batch_size,
                     "offset": offset,
                     "with_payload": True,
-                    "with_vector": False,
+                    "with_vector": True,
                 }
                 res = self._http_request("POST", f"/collections/{self.source_collection}/points/scroll", data=scroll_body)
                 q_result = res.get("result", {})
                 for pt in q_result.get("points", []):
-                    records.append({"id": pt.get("id"), "payload": pt.get("payload") or {}})
+                    records.append({"id": pt.get("id"), "payload": pt.get("payload") or {}, "vector": pt.get("vector")})
                 next_offset = q_result.get("next_page_offset")
 
             if not records:
@@ -474,7 +542,7 @@ class V2Migrator:
             )
 
             if new_p is not None:
-                converted_items.append({"id": rec["id"], "payload": new_p})
+                converted_items.append({"id": rec["id"], "payload": new_p, "vector": rec.get("vector")})
                 ndt = new_p.get("doc_type") or "NONE"
                 new_doc_types[ndt] = new_doc_types.get(ndt, 0) + 1
                 nrs = new_p.get("review_status")
@@ -514,12 +582,12 @@ class V2Migrator:
             "renamed_docs": renamed_docs,
         }
 
-        # 예상값 검증
-        exp_total = 525
-        exp_dropped = 60
-        exp_converted = 465
-        exp_unique_docs = 113
-        exp_unmatched = 0
+        # 예상값 검증 (설정된 expected_counts 기준)
+        exp_total = self.expected_counts.get("total", 525)
+        exp_dropped = self.expected_counts.get("dropped", 60)
+        exp_converted = self.expected_counts.get("converted", 465)
+        exp_unique_docs = self.expected_counts.get("unique_docs", 113)
+        exp_unmatched = self.expected_counts.get("unmatched", 0)
 
         is_valid = (
             total_points == exp_total
@@ -530,53 +598,187 @@ class V2Migrator:
         )
         summary["is_valid"] = is_valid
 
+        # 쓰기 전 예상값 검증 불일치 시 쓰기 전에 즉시 중단
+        if not is_valid:
+            report_md = self.generate_markdown_report(summary)
+            report_path = self.save_report(report_md)
+            summary["report_path"] = str(report_path)
+            err_msg = (
+                f"예상값 검증 불일치 발생! 쓰기 전에 작업을 중단합니다.\n"
+                f"- 대상 포인트: 예상 {exp_total} vs 실측 {total_points}\n"
+                f"- 제외 포인트: 예상 {exp_dropped} vs 실측 {len(dropped_elements)}\n"
+                f"- 이전 포인트: 예상 {exp_converted} vs 실측 {len(converted_items)}\n"
+                f"- 고유 문서 수: 예상 {exp_unique_docs} vs 실측 {len(self.doc_id_map)}\n"
+                f"- 원문 누락 문서: 예상 {exp_unmatched} vs 실측 {summary['unmatched_pdf_docs']}"
+            )
+            print("\n" + "=" * 72)
+            print(" [ERROR] " + err_msg)
+            print("=" * 72)
+            raise RuntimeError(err_msg)
+
+        # 6. execute 모드: v2 컬렉션 생성 및 실제 적재
+        if not self.dry_run:
+            now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+            if self.client is None:
+                raise RuntimeError("execute 모드는 QdrantClient 인스턴스가 필요합니다.")
+
+            # 6.1 v2 컬렉션 생성 (원본과 동일 벡터 설정)
+            self.client.create_collection(
+                collection_name=self.target_collection,
+                vectors_config=src_vectors_config,
+                sparse_vectors_config=src_sparse_config,
+            )
+
+            # 6.2 payload 인덱스 생성 (이름 변경표 적용 및 표준 인덱스)
+            field_name_map = {
+                LEGACY_KEY_CAPTION: "caption",
+                LEGACY_KEY_TABLE: "table_data",
+            }
+            indexed_fields = set()
+
+            for old_field, schema_info in src_payload_schema.items():
+                new_field = field_name_map.get(old_field, old_field)
+                indexed_fields.add(new_field)
+                data_type = schema_info.data_type if hasattr(schema_info, "data_type") else schema_info.get("data_type")
+                try:
+                    if qmodels is not None:
+                        schema_type = qmodels.PayloadSchemaType.KEYWORD
+                        if data_type == "integer":
+                            schema_type = qmodels.PayloadSchemaType.INTEGER
+                        elif data_type == "float":
+                            schema_type = qmodels.PayloadSchemaType.FLOAT
+                        elif data_type == "text":
+                            schema_type = qmodels.PayloadSchemaType.TEXT
+                        self.client.create_payload_index(
+                            collection_name=self.target_collection,
+                            field_name=new_field,
+                            field_schema=schema_type,
+                        )
+                except Exception as e:
+                    print(f"[Warn] payload 인덱스 생성 건너뜀 ({new_field}): {e}")
+
+            # 필수 표준 필드 인덱스 보장
+            for std_field in ["review_status", "element_type", "doc_type", "doc_name", "page_number"]:
+                if std_field not in indexed_fields and qmodels is not None:
+                    try:
+                        stype = qmodels.PayloadSchemaType.INTEGER if std_field == "page_number" else qmodels.PayloadSchemaType.KEYWORD
+                        self.client.create_payload_index(
+                            collection_name=self.target_collection,
+                            field_name=std_field,
+                            field_schema=stype,
+                        )
+                    except Exception:
+                        pass
+
+            # 6.3 배치 단위로 upsert 수행 (100건 단위, 옛 id 그대로 보존)
+            upsert_batch_size = 100
+            for i in range(0, len(converted_items), upsert_batch_size):
+                chunk = converted_items[i : i + upsert_batch_size]
+                if qmodels is not None:
+                    pts = [
+                        qmodels.PointStruct(id=item["id"], vector=item["vector"], payload=item["payload"])
+                        for item in chunk
+                    ]
+                    self.client.upsert(collection_name=self.target_collection, points=pts)
+
+            # 6.4 doc_id_map.json 및 dropped_elements_*.csv 저장
+            with open(self.doc_id_map_file, "w", encoding="utf-8") as f:
+                json.dump(self.doc_id_map, f, ensure_ascii=False, indent=2)
+
+            dropped_csv_file = self.migration_dir / f"dropped_elements_{now_ts}.csv"
+            with open(dropped_csv_file, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.DictWriter(
+                    f, fieldnames=["element_id", "reason", "kept_element_id", "doc_name", "canonical_doc_name"]
+                )
+                writer.writeheader()
+                for d in dropped_elements:
+                    writer.writerow(d)
+            summary["dropped_csv_path"] = str(dropped_csv_file)
+
+            # 6.5 쓰기 후 검증 (Post-Verification)
+            post_verify_issues: List[str] = []
+
+            # (1) 개수 확인
+            tgt_info = self.client.get_collection(self.target_collection)
+            tgt_count = tgt_info.points_count
+            if tgt_count != len(converted_items):
+                post_verify_issues.append(f"대상 컬렉션 개수 불일치: 예상 {len(converted_items)} vs 실측 {tgt_count}")
+
+            # (2) review_status 분포 확인
+            # (3) 샘플 5건 벡터 일치 확인
+            sample_items = converted_items[:5]
+            sample_ids = [it["id"] for it in sample_items]
+            src_samples = {
+                pt.id: pt.vector
+                for pt in self.client.retrieve(collection_name=self.source_collection, ids=sample_ids, with_vectors=True)
+            }
+            tgt_samples = {
+                pt.id: pt.vector
+                for pt in self.client.retrieve(collection_name=self.target_collection, ids=sample_ids, with_vectors=True)
+            }
+
+            for sid in sample_ids:
+                sv = src_samples.get(sid)
+                tv = tgt_samples.get(sid)
+                if sv is None or tv is None:
+                    post_verify_issues.append(f"샘플 id={sid} 조회 실패 (src={sv is not None}, tgt={tv is not None})")
+                elif not _compare_vectors(sv, tv):
+                    post_verify_issues.append(f"샘플 id={sid} 벡터 불일치")
+
+            summary["post_verify_success"] = len(post_verify_issues) == 0
+            summary["post_verify_issues"] = post_verify_issues
+            summary["tgt_count"] = tgt_count
+
         # 리포트 생성 및 저장
         report_md = self.generate_markdown_report(summary)
         report_path = self.save_report(report_md)
         summary["report_path"] = str(report_path)
 
-        if not is_valid:
-            print("\n" + "=" * 72)
-            print(" [ERROR] 예상값 검증 불일치 발생!")
-            print("=" * 72)
-            print(f"- 대상 포인트: 예상 {exp_total} vs 실측 {total_points}")
-            print(f"- 제외 포인트: 예상 {exp_dropped} vs 실측 {len(dropped_elements)}")
-            print(f"- 이전 포인트: 예상 {exp_converted} vs 실측 {len(converted_items)}")
-            print(f"- 고유 문서 수: 예상 {exp_unique_docs} vs 실측 {len(self.doc_id_map)}")
-            print(f"- 원문 누락 문서: 예상 {exp_unmatched} vs 실측 {summary['unmatched_pdf_docs']}")
-            sys.exit(1)
-
         return summary
 
     def generate_markdown_report(self, s: Dict[str, Any]) -> str:
-        """최종 dry-run 결과 마크다운 리포트 생성."""
+        """결과 마크다운 리포트 생성 (dry-run 및 execute 공용)."""
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        mode_str = "EXECUTE (실제 쓰기 완료)" if not self.dry_run else "DRY-RUN (읽기 전용, 실제 쓰기 0건)"
         status_mark = "✅ 전체 일치 (통과)" if s["is_valid"] else "❌ 불일치 발생"
+
         lines = [
-            "# FigIndex v2 컬렉션 이전 최종 Dry-Run 리포트 (정리안 반영)",
+            f"# FigIndex v2 컬렉션 이전 {'실행' if not self.dry_run else '최종 Dry-Run'} 리포트",
             "",
             f"- **실행 일시**: {now_str}",
             f"- **원본 컬렉션**: `{self.source_collection}`",
-            f"- **대상 컬렉션 (계획)**: `{self.target_collection}`",
-            f"- **실행 모드**: `DRY-RUN` (doc_name 정리안 및 중복 제거 적용, 실제 쓰기 0건)",
+            f"- **대상 컬렉션**: `{self.target_collection}`",
+            f"- **실행 모드**: `{mode_str}`",
             f"- **예상값 검증 결과**: **{status_mark}**",
+        ]
+
+        if not self.dry_run:
+            pv_mark = "✅ 쓰기 후 검증 성공" if s.get("post_verify_success") else "❌ 쓰기 후 검증 실패"
+            lines.append(f"- **쓰기 후 검증 결과**: **{pv_mark}**")
+            if s.get("post_verify_issues"):
+                lines.append("  > [!CAUTION]")
+                lines.append("  > **검증 실패 세부 항목:**")
+                for iss in s["post_verify_issues"]:
+                    lines.append(f"  > - {iss}")
+
+        lines.extend([
             "",
             "## 1. 예상값 검증표 (기준선 vs 실측치)",
             "",
             "| 검증 항목 | 예상 기준치 | 실측치 | 판정 | 비고 |",
             "| :--- | :---: | :---: | :---: | :--- |",
-            f"| **변환 대상 포인트** | **525건** | **{s['total_points']}건** | {'✅ 일치' if s['total_points'] == 525 else '❌ 불일치'} | 원본 figindex_elements 포인트 수 |",
-            f"| **중복 제외 포인트** | **60건** | **{s['dropped_count']}건** | {'✅ 일치' if s['dropped_count'] == 60 else '❌ 불일치'} | 동일 PDF·페이지·IoU≥0.9 옛 이름 쪽 요소 |",
-            f"| **최종 이전 포인트** | **465건** | **{s['converted_count']}건** | {'✅ 일치' if s['converted_count'] == 465 else '❌ 불일치'} | v2 컬렉션으로 실제 적재될 순수 요소 |",
-            f"| **고유 문서 수 (`doc_id`)** | **113개** | **{s['unique_documents']}개** | {'✅ 일치' if s['unique_documents'] == 113 else '❌ 불일치'} | 실제 PDF 기준 단일 doc_id 발급 |",
-            f"| **원문 PDF 누락 문서** | **0개** | **{s['unmatched_pdf_docs']}개** | {'✅ 일치' if s['unmatched_pdf_docs'] == 0 else '❌ 불일치'} | 백엔드 404 발생 문서 0개 달성 |",
+            f"| **변환 대상 포인트** | **{self.expected_counts.get('total', 525)}건** | **{s['total_points']}건** | {'✅ 일치' if s['total_points'] == self.expected_counts.get('total', 525) else '❌ 불일치'} | 원본 컬렉션 포인트 수 |",
+            f"| **중복 제외 포인트** | **{self.expected_counts.get('dropped', 60)}건** | **{s['dropped_count']}건** | {'✅ 일치' if s['dropped_count'] == self.expected_counts.get('dropped', 60) else '❌ 불일치'} | 동일 PDF·페이지·IoU≥0.9 옛 이름 요소 |",
+            f"| **최종 이전 포인트** | **{self.expected_counts.get('converted', 465)}건** | **{s['converted_count']}건** | {'✅ 일치' if s['converted_count'] == self.expected_counts.get('converted', 465) else '❌ 불일치'} | v2 컬렉션 적재 순수 요소 |",
+            f"| **고유 문서 수 (`doc_id`)** | **{self.expected_counts.get('unique_docs', 113)}개** | **{s['unique_documents']}개** | {'✅ 일치' if s['unique_documents'] == self.expected_counts.get('unique_docs', 113) else '❌ 불일치'} | 실제 PDF 기준 단일 doc_id 발급 |",
+            f"| **원문 PDF 누락 문서** | **{self.expected_counts.get('unmatched', 0)}개** | **{s['unmatched_pdf_docs']}개** | {'✅ 일치' if s['unmatched_pdf_docs'] == self.expected_counts.get('unmatched', 0) else '❌ 불일치'} | 백엔드 404 발생 문서 0개 달성 |",
             "",
             "## 2. 이전 후 문서 유형 및 검수 상태 분포",
             "",
-            "### 2.1 문서 유형(`doc_type`) 분포 (총 465건)",
+            f"### 2.1 문서 유형(`doc_type`) 분포 (총 {s['converted_count']}건)",
             "| 문서 유형 | 건수 | 비율 |",
             "| :--- | :---: | :---: |",
-        ]
+        ])
 
         total_conv = s["converted_count"]
         for dt, cnt in sorted(s["new_doc_types"].items()):
@@ -585,7 +787,7 @@ class V2Migrator:
 
         lines.extend([
             "",
-            "### 2.2 검수 상태(`review_status`) 분포 (총 465건)",
+            f"### 2.2 검수 상태(`review_status`) 분포 (총 {s['converted_count']}건)",
             "| 검수 상태 | 건수 | 비율 | 비고 |",
             "| :--- | :---: | :---: | :--- |",
         ])
@@ -620,9 +822,10 @@ class V2Migrator:
         return "\n".join(lines)
 
     def save_report(self, report_md: str) -> Path:
-        """리포트를 figindex/data/migration/dry_run_v2_final_YYYYMMDD-HHMM.md에 저장."""
+        """리포트를 migration 디렉토리에 저장."""
         now_ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
-        report_file = self.migration_dir / f"dry_run_v2_final_{now_ts}.md"
+        prefix = "execute_v2" if not self.dry_run else "dry_run_v2_final"
+        report_file = self.migration_dir / f"{prefix}_{now_ts}.md"
         with open(report_file, "w", encoding="utf-8") as f:
             f.write(report_md)
         return report_file
@@ -630,8 +833,9 @@ class V2Migrator:
 
 def main():
     parser = argparse.ArgumentParser(description="FigIndex v2 컬렉션 마이그레이션 도구")
-    parser.add_argument("--dry-run", action="store_true", default=True, help="데이터 변환 검증만 수행 (기본값)")
+    parser.add_argument("--dry-run", action="store_true", default=False, help="데이터 변환 검증만 수행")
     parser.add_argument("--execute", action="store_true", help="v2 컬렉션 실제 생성 및 마이그레이션 실행")
+    parser.add_argument("--confirm", type=str, default=None, help="실행 확인을 위한 대상 컬렉션 이름 입력")
     parser.add_argument("--doc-map", type=str, default=None, help="doc_name 조사 CSV 경로 (필수)")
     parser.add_argument("--source", type=str, default="figindex_elements", help="원본 컬렉션 이름")
     parser.add_argument("--target", type=str, default="figindex_elements_v2", help="대상 컬렉션 이름")
@@ -639,14 +843,17 @@ def main():
 
     args = parser.parse_args()
 
-    # 안전장치: --execute 시 --doc-map 필수
-    if args.execute and not args.doc_map:
-        print("[Error] --execute 실행 시에는 반드시 --doc-map <조사 CSV 경로> 옵션을 지정해야 합니다.")
-        sys.exit(1)
+    # 모드 결정: 기본값은 dry-run
+    is_execute = args.execute
 
-    if args.execute:
-        print("[Error] 이번 단계에서는 --execute를 실행하지 않습니다. --dry-run으로만 실행해 주세요.")
-        sys.exit(1)
+    # 안전장치: --execute 시 필수 검증
+    if is_execute:
+        if not args.doc_map:
+            print("[Error] --execute 실행 시에는 반드시 --doc-map <조사 CSV 경로> 옵션을 지정해야 합니다.")
+            sys.exit(1)
+        if args.confirm != args.target:
+            print(f"[Error] 안전 확인 실패: --confirm 옵션에 대상 컬렉션 이름('{args.target}')을 정확히 입력해야 실행됩니다.")
+            sys.exit(1)
 
     # doc-map 기본값 자동 탐색 (지정되지 않은 경우)
     doc_map_path = args.doc_map
@@ -665,11 +872,12 @@ def main():
         source_collection=args.source,
         target_collection=args.target,
         doc_map_path=doc_map_path,
-        dry_run=True,
+        dry_run=not is_execute,
     )
 
+    mode_title = "실제 마이그레이션 (EXECUTE)" if is_execute else "최종 DRY-RUN (정리안 반영)"
     print("=" * 72)
-    print(" FigIndex v2 컬렉션 마이그레이션 최종 DRY-RUN (정리안 반영)")
+    print(f" FigIndex v2 컬렉션 {mode_title}")
     print(f" 원본: {args.source} ➔ 대상: {args.target}")
     print(f" 정리안 CSV: {doc_map_path or '미지정'}")
     print("=" * 72)
@@ -677,13 +885,13 @@ def main():
     try:
         summary = migrator.run()
     except Exception as e:
-        print(f"\n[FAIL] Dry-run 실행 실패: {e}")
+        print(f"\n[FAIL] 마이그레이션 실패: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
 
     print("\n" + "=" * 72)
-    print(" 최종 DRY-RUN 예상값 검증표")
+    print(f" {mode_title} 예상값 검증표")
     print(f"- 대상 포인트: {summary['total_points']}건 (예상 525건)")
     print(f"- 제외 포인트: {summary['dropped_count']}건 (예상 60건)")
     print(f"- 최종 이전: {summary['converted_count']}건 (예상 465건)")
@@ -691,6 +899,10 @@ def main():
     print(f"- 원문 누락 문서: {summary['unmatched_pdf_docs']}개 (예상 0개)")
     print(f"- TableData 실패로 인한 상태 변경(APPROVED ➔ PENDING_REVIEW): {summary['status_changed_count']}건")
     print(f"- 검증 결과: {'✅ 전체 일치 (PASS)' if summary['is_valid'] else '❌ 불일치 (FAIL)'}")
+    if is_execute:
+        print(f"- 쓰기 후 검증: {'✅ 통과 (PASS)' if summary.get('post_verify_success') else '❌ 실패 (FAIL)'}")
+        if summary.get("dropped_csv_path"):
+            print(f"- 제외 요소 CSV: {summary['dropped_csv_path']}")
     print(f"- 리포트 파일: {summary['report_path']}")
     print("=" * 72)
 

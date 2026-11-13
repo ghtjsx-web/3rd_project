@@ -15,6 +15,7 @@ v2 컬렉션 마이그레이션 순수 변환 함수(transform_payload) 단위 �
 """
 import sys
 from pathlib import Path
+import pytest
 
 # 모듈 경로 추가
 current_dir = Path(__file__).resolve().parent
@@ -34,7 +35,15 @@ from migrate_to_v2 import (
     transform_payload,
     LEGACY_KEY_CAPTION,
     LEGACY_KEY_TABLE,
+    V2Migrator,
 )
+
+try:
+    from qdrant_client import QdrantClient
+    from qdrant_client.http import models as qmodels
+except ImportError:
+    QdrantClient = None
+    qmodels = None
 
 
 def test_case_1_normal_table():
@@ -416,3 +425,272 @@ def test_case_15_pipeline_version_is_fixed_legacy():
 
     assert new_p is not None
     assert new_p["pipeline_version"] == "0.0.0"
+
+
+def _snapshot_migration_dir():
+    """실제 migration 폴더의 파일 목록과 수정 시각 스냅샷을 반환합니다."""
+    candidates = [
+        Path("/data/migration"),
+        repo_root / "figindex" / "data" / "migration",
+        current_dir.parent / "data" / "migration",
+    ]
+    real_dir = next((c for c in candidates if c.exists()), None)
+    if not real_dir or not real_dir.exists():
+        return {}
+    return {f.name: f.stat().st_mtime for f in real_dir.iterdir() if f.is_file()}
+
+
+def test_case_16_execute_in_memory_success(tmp_path):
+    """16. execute 모드 QdrantClient(':memory:') 성공 및 원본 불변, v2 생성/벡터/페이로드 검증 (임시 폴더 격리)"""
+    if QdrantClient is None or qmodels is None:
+        pytest.skip("qdrant_client 모듈이 설치되어 있지 않아 건너뜁니다.")
+
+    snap_before = _snapshot_migration_dir()
+
+    c = QdrantClient(":memory:")
+    src_col = "test_elements"
+    tgt_col = "test_elements_v2"
+
+    c.create_collection(
+        collection_name=src_col,
+        vectors_config={"dense": qmodels.VectorParams(size=4, distance=qmodels.Distance.COSINE)},
+        sparse_vectors_config={"sparse": qmodels.SparseVectorParams()},
+    )
+
+    # 샘플 포인트 3개 (포인트 1: 대표 문서, 포인트 2: 옛 이름 중복, 포인트 3: 옛 이름 비중복)
+    sample_points = [
+        qmodels.PointStruct(
+            id=1,
+            vector={
+                "dense": [0.1, 0.2, 0.3, 0.4],
+                "sparse": qmodels.SparseVector(indices=[1, 3], values=[0.5, 0.9]),
+            },
+            payload={
+                "element_id": "elem-1",
+                "doc_name": "RPT_A.pdf",
+                "page_number": 1,
+                "bbox": [0.1, 0.1, 0.5, 0.5],
+                "element_type": ElementType.CHART.value,
+                "confidence_score": 0.95,
+                "review_status": ReviewStatus.APPROVED.value,
+            },
+        ),
+        qmodels.PointStruct(
+            id=2,
+            vector={
+                "dense": [0.1, 0.2, 0.3, 0.4],
+                "sparse": qmodels.SparseVector(indices=[1, 3], values=[0.5, 0.9]),
+            },
+            payload={
+                "element_id": "elem-2",
+                "doc_name": "A_old.pdf",
+                "page_number": 1,
+                "bbox": [0.1, 0.1, 0.5, 0.5],  # 동일 페이지·동일 좌표 -> 중복 제외 대상
+                "element_type": ElementType.CHART.value,
+                "confidence_score": 0.95,
+                "review_status": ReviewStatus.APPROVED.value,
+            },
+        ),
+        qmodels.PointStruct(
+            id=3,
+            vector={
+                "dense": [0.5, 0.6, 0.7, 0.2],
+                "sparse": qmodels.SparseVector(indices=[2, 4], values=[0.3, 0.7]),
+            },
+            payload={
+                "element_id": "elem-3",
+                "doc_name": "A_old.pdf",
+                "page_number": 2,  # 2페이지 -> 비중복 유지 대상
+                "bbox": [0.2, 0.2, 0.6, 0.6],
+                "element_type": ElementType.CHART.value,
+                "confidence_score": 0.95,
+                "review_status": ReviewStatus.APPROVED.value,
+            },
+        ),
+    ]
+    c.upsert(collection_name=src_col, points=sample_points)
+
+    # doc_name 조사 CSV 작성 (tmp_path에 작성)
+    map_csv = tmp_path / "doc_name_audit.csv"
+    map_csv.write_text(
+        "doc_name,canonical_doc_name,status\n"
+        "A_old.pdf,RPT_A.pdf,RENAMED\n",
+        encoding="utf-8-sig",
+    )
+
+    # migration_dir=tmp_path 전달로 완벽한 임시 폴더 격리
+    migrator = V2Migrator(
+        client=c,
+        source_collection=src_col,
+        target_collection=tgt_col,
+        doc_map_path=str(map_csv),
+        dry_run=False,
+        expected_counts={
+            "total": 3,
+            "dropped": 1,
+            "converted": 2,
+            "unique_docs": 1,
+            "unmatched": 0,
+        },
+        migration_dir=tmp_path,
+    )
+
+    summary = migrator.run()
+
+    # 1. 검증 결과 확인
+    assert summary["is_valid"] is True
+    assert summary["post_verify_success"] is True
+
+    # 2. 컬렉션 생성 및 개수 확인
+    assert c.collection_exists(tgt_col) is True
+    src_info = c.get_collection(src_col)
+    tgt_info = c.get_collection(tgt_col)
+    assert src_info.points_count == 3  # 원본은 그대로 3건 유지 (불변)
+    assert tgt_info.points_count == 2  # v2 컬렉션에는 중복 제외 후 2건 적재
+
+    # 3. v2 레코드 페이로드 및 벡터 검증
+    tgt_records, _ = c.scroll(collection_name=tgt_col, limit=10, with_payload=True, with_vectors=True)
+    assert len(tgt_records) == 2
+    for r in tgt_records:
+        assert r.payload["doc_name"] == "RPT_A.pdf"
+        assert r.payload["pipeline_version"] == "0.0.0"
+        # 벡터 보존 확인
+        assert "dense" in r.vector
+        assert "sparse" in r.vector
+
+    # 4. 임시 폴더에만 파일이 생성되었는지 확인
+    assert (tmp_path / "doc_id_map.json").exists()
+    assert any(f.name.startswith("dropped_elements_") for f in tmp_path.iterdir())
+    assert any(f.name.startswith("execute_v2_") for f in tmp_path.iterdir())
+
+    # 5. 실제 migration 폴더가 전혀 변경되지 않았는지 단언
+    snap_after = _snapshot_migration_dir()
+    assert snap_before == snap_after, "실제 migration 폴더가 테스트에 의해 변경되었습니다!"
+
+
+def test_case_17_execute_aborts_if_target_exists(tmp_path):
+    """17. target 컬렉션이 이미 존재하면 거부 (덮어쓰기 방지)"""
+    if QdrantClient is None or qmodels is None:
+        pytest.skip("qdrant_client 모듈이 설치되어 있지 않아 건너뜁니다.")
+
+    snap_before = _snapshot_migration_dir()
+
+    c = QdrantClient(":memory:")
+    src_col = "test_src"
+    tgt_col = "test_src_v2"
+
+    c.create_collection(
+        collection_name=src_col,
+        vectors_config={"dense": qmodels.VectorParams(size=4, distance=qmodels.Distance.COSINE)},
+    )
+    c.create_collection(
+        collection_name=tgt_col,
+        vectors_config={"dense": qmodels.VectorParams(size=4, distance=qmodels.Distance.COSINE)},
+    )
+
+    map_csv = tmp_path / "doc_map.csv"
+    map_csv.write_text("doc_name,canonical_doc_name\n", encoding="utf-8-sig")
+
+    migrator = V2Migrator(
+        client=c,
+        source_collection=src_col,
+        target_collection=tgt_col,
+        doc_map_path=str(map_csv),
+        dry_run=False,
+        migration_dir=tmp_path,
+    )
+
+    with pytest.raises(RuntimeError, match="이미 존재합니다"):
+        migrator.run()
+
+    snap_after = _snapshot_migration_dir()
+    assert snap_before == snap_after
+
+
+def test_case_18_execute_aborts_if_expected_mismatch(tmp_path):
+    """18. 예상값과 실측치가 불일치하면 쓰기 전에 중단"""
+    if QdrantClient is None or qmodels is None:
+        pytest.skip("qdrant_client 모듈이 설치되어 있지 않아 건너뜁니다.")
+
+    snap_before = _snapshot_migration_dir()
+
+    c = QdrantClient(":memory:")
+    src_col = "test_src_mismatch"
+    tgt_col = "test_src_mismatch_v2"
+
+    c.create_collection(
+        collection_name=src_col,
+        vectors_config={"dense": qmodels.VectorParams(size=4, distance=qmodels.Distance.COSINE)},
+    )
+    # 1개 포인트만 등록
+    c.upsert(
+        collection_name=src_col,
+        points=[
+            qmodels.PointStruct(
+                id=1,
+                vector={"dense": [0.1, 0.2, 0.3, 0.4]},
+                payload={
+                    "element_id": "elem-1",
+                    "doc_name": "RPT_A.pdf",
+                    "page_number": 1,
+                    "bbox": [0.1, 0.1, 0.5, 0.5],
+                    "element_type": ElementType.CHART.value,
+                    "confidence_score": 0.95,
+                    "review_status": ReviewStatus.APPROVED.value,
+                },
+            )
+        ],
+    )
+
+    map_csv = tmp_path / "doc_map.csv"
+    map_csv.write_text("doc_name,canonical_doc_name\n", encoding="utf-8-sig")
+
+    migrator = V2Migrator(
+        client=c,
+        source_collection=src_col,
+        target_collection=tgt_col,
+        doc_map_path=str(map_csv),
+        dry_run=False,
+        expected_counts={
+            "total": 3,  # 실측 1건과 불일치
+            "dropped": 0,
+            "converted": 3,
+            "unique_docs": 1,
+            "unmatched": 0,
+        },
+        migration_dir=tmp_path,
+    )
+
+    with pytest.raises(RuntimeError, match="예상값 검증 불일치"):
+        migrator.run()
+
+    # 대상 컬렉션이 생성되지 않았는지 확인
+    assert c.collection_exists(tgt_col) is False
+
+    snap_after = _snapshot_migration_dir()
+    assert snap_before == snap_after
+
+
+def test_case_19_confirm_flag_check(monkeypatch):
+    """19. CLI 실행 시 --confirm 불일치 시 차단 확인"""
+    from migrate_to_v2 import main
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "migrate_to_v2.py",
+            "--execute",
+            "--doc-map",
+            "dummy.csv",
+            "--target",
+            "figindex_elements_v2",
+            "--confirm",
+            "wrong_target_name",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+
