@@ -116,6 +116,7 @@ DocLayout-YOLO의 클래스 이름은 모델 출력 그대로 씁니다. 1단계
 - `model_name`: 추출 당시 환경변수 `VISION_MODEL` 값을 그대로 저장합니다.
 - 검색용 Qdrant payload(`ElementSearchPayload`)는 요소 + 문서 메타데이터(`doc_name`, `doc_title`, `doc_type`, `domain`, `source_org`, `authors`, `publish_date`, `collection_id`)를 합친 것입니다.
 - **만드는 곳**: `doc_id` 발급과 문서 메타데이터 추출은 orchestrator가 문서마다 1회 합니다. extractor는 `Element`만 반환하고, orchestrator가 문서 메타데이터를 합쳐 `ElementSearchPayload`를 만듭니다.
+- PDF 텍스트 레이어는 `pipeline/pdf_text.py`의 함수로만 읽는다 (좌표 순서 정렬, 증권 리포트 글자 순서 꼬임 대응).
 
 ## 8. 좌표 (`bbox`)
 

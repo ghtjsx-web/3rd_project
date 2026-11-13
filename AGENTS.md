@@ -50,6 +50,7 @@
 - YOLO 클래스 처리는 `LAYOUT_TO_ELEMENT`, `MERGE_CLASSES`만 쓴다.
 - 고유명사는 엔티티 사전의 `entity_name`으로 바꿔 저장한다.
 - 평가 결과의 키는 `docs/glossary.md` 12절의 지표 코드명을 그대로 쓴다.
+- PDF 글자 읽기는 `figindex/pipeline/pdf_text.py`의 함수만 사용한다. 필요한 함수가 없으면 그 파일에 추가한다.
 
 ## 6. 이름 규칙
 - Python 식별자, DB 컬럼, API JSON 키: 영어 snake_case.
