@@ -1,0 +1,314 @@
+{
+  "meta": {
+    "created_at": "2026-11-13T10:39:36.335196",
+    "commit": "7b0a01bb98d5eef31e6847d67c3fa5081d5cb5c3",
+    "mode": "full"
+  },
+  "A1": {
+    "branch": "refactor/schema-unify",
+    "changed_files": [
+      ".gitignore",
+      "PROJECT_STATUS_FOR_AI.md"
+    ]
+  },
+  "A2": {
+    "total_strict": 131,
+    "total_general": 61,
+    "strict_counts": {
+      "figindex/backend/app/main.py": {
+        "structured_data": 3,
+        "VisualElementSchema": 12,
+        "TableStructure": 1,
+        "title_or_caption": 3
+      },
+      "figindex/pipeline/evaluator.py": {
+        "structured_data": 8,
+        "TableStructure": 3
+      },
+      "figindex/pipeline/extractor.py": {
+        "structured_data": 8,
+        "VisualElementSchema": 5,
+        "TableStructure": 2,
+        "title_or_caption": 5
+      },
+      "figindex/pipeline/orchestrator.py": {
+        "VisualElementSchema": 5,
+        "title_or_caption": 2
+      },
+      "figindex/pipeline/rename_reports.py": {
+        "file_name": 14
+      },
+      "figindex/pipeline/run_index.py": {
+        "structured_data": 2,
+        "title_or_caption": 2
+      },
+      "figindex/pipeline/test_metadata_generalization.py": {
+        "structured_data": 1,
+        "title_or_caption": 1
+      },
+      "figindex/pipeline/yolo_trial.py": {
+        "file_name": 3
+      },
+      "figindex/frontend/app/page.tsx": {
+        "structured_data": 1,
+        "TableStructure": 2,
+        "title_or_caption": 3
+      },
+      "figindex/frontend/app/components/ComparisonModal.tsx": {
+        "structured_data": 3,
+        "TableStructure": 2,
+        "title_or_caption": 9
+      },
+      "figindex/frontend/app/components/ReviewTab.tsx": {
+        "structured_data": 5,
+        "TableStructure": 2,
+        "title_or_caption": 11
+      },
+      "figindex/frontend/app/elements/[id]/page.tsx": {
+        "structured_data": 8,
+        "TableStructure": 2,
+        "title_or_caption": 3
+      }
+    },
+    "general_counts": {
+      "figindex/backend/app/main.py": {
+        "filename": 1,
+        "action": 3,
+        "version": 1,
+        "status": 3,
+        "title": 1,
+        "model": 1,
+        "type": 1
+      },
+      "figindex/pipeline/cropper.py": {
+        "page": 2,
+        "type": 1
+      },
+      "figindex/pipeline/evaluator.py": {
+        "status": 2
+      },
+      "figindex/pipeline/extractor.py": {
+        "model": 1
+      },
+      "figindex/pipeline/orchestrator.py": {
+        "page": 1,
+        "model": 1
+      },
+      "figindex/pipeline/rename_reports.py": {
+        "action": 1,
+        "model": 1
+      },
+      "figindex/pipeline/run_index.py": {
+        "action": 2,
+        "type": 4
+      },
+      "figindex/pipeline/select_pdfs.py": {
+        "done": 1,
+        "action": 1
+      },
+      "figindex/pipeline/yolo_trial.py": {
+        "conf": 1,
+        "filename": 1,
+        "page": 4,
+        "label": 1,
+        "figure": 4,
+        "title": 1,
+        "model": 1,
+        "type": 3,
+        "confidence": 3
+      },
+      "figindex/shared/schemas.py": {
+        "figure": 1,
+        "title": 1
+      },
+      "scripts/concurrency_check.py": {
+        "status": 8,
+        "type": 1
+      },
+      "scripts/local_to_server.py": {
+        "action": 1,
+        "type": 1
+      }
+    }
+  },
+  "A3": {
+    "total_status_literals": 48,
+    "found_literals": {
+      "figindex/backend/app/main.py": {
+        "APPROVED": 3,
+        "TABLE": 1,
+        "CHART": 1,
+        "DIAGRAM": 1,
+        "APPROVE": 1,
+        "REJECTED": 2,
+        "REJECT": 1,
+        "PENDING_REVIEW": 2
+      },
+      "figindex/pipeline/cropper.py": {
+        "TABLE": 2,
+        "CHART": 1
+      },
+      "figindex/pipeline/extractor.py": {
+        "TABLE": 7,
+        "CHART": 2,
+        "DIAGRAM": 1
+      },
+      "figindex/pipeline/run_index.py": {
+        "TABLE": 1
+      },
+      "figindex/pipeline/test_metadata_generalization.py": {
+        "APPROVED": 1,
+        "CHART": 2
+      },
+      "figindex/pipeline/yolo_trial.py": {
+        "TABLE": 1
+      },
+      "figindex/shared/schemas.py": {
+        "TABLE": 1,
+        "CHART": 1,
+        "DIAGRAM": 1,
+        "UPLOADED": 1,
+        "PROCESSING": 1,
+        "COMPLETED": 1,
+        "FAILED": 1,
+        "DUPLICATE": 1,
+        "APPROVED": 1,
+        "PENDING_REVIEW": 1,
+        "REJECTED": 1,
+        "APPROVE": 1,
+        "EDIT": 1,
+        "REJECT": 1,
+        "COMPANY": 1,
+        "ORG": 1,
+        "PRODUCT": 1,
+        "OTHER": 1
+      }
+    }
+  },
+  "A4": {
+    "total_threshold_literals": 7,
+    "found_thresholds": {
+      "figindex/backend/app/main.py": 2,
+      "figindex/pipeline/evaluator.py": 2,
+      "figindex/pipeline/test_coords.py": 2,
+      "figindex/shared/schemas.py": 1
+    }
+  },
+  "A5": {
+    "app_schemas_violations": [],
+    "legacy_importers": [
+      "figindex/backend/app/main.py",
+      "figindex/pipeline/evaluator.py",
+      "figindex/pipeline/extractor.py",
+      "figindex/pipeline/orchestrator.py"
+    ]
+  },
+  "A6": {
+    "all_models": [
+      "AdminVerifyRequest",
+      "Batch",
+      "Collection",
+      "ConfidenceSignals",
+      "Detection",
+      "DocStatus",
+      "Document",
+      "Element",
+      "ElementSearchPayload",
+      "ElementType",
+      "EntityEntry",
+      "EntityType",
+      "LayoutClass",
+      "Page",
+      "ReviewAction",
+      "ReviewActionRequest",
+      "ReviewLog",
+      "ReviewStatus",
+      "TableData"
+    ],
+    "duplicate_models": []
+  },
+  "A7": {
+    "checked_files": 19,
+    "checked_files_list": [
+      "figindex/backend/app/main.py",
+      "figindex/pipeline/cropper.py",
+      "figindex/pipeline/evaluator.py",
+      "figindex/pipeline/export_to_local_qdrant.py",
+      "figindex/pipeline/extractor.py",
+      "figindex/pipeline/init_collection.py",
+      "figindex/pipeline/orchestrator.py",
+      "figindex/pipeline/rename_reports.py",
+      "figindex/pipeline/run_index.py",
+      "figindex/pipeline/select_pdfs.py",
+      "figindex/pipeline/test_coords.py",
+      "figindex/pipeline/test_metadata_generalization.py",
+      "figindex/pipeline/test_parse_filename.py",
+      "figindex/pipeline/yolo_trial.py",
+      "figindex/shared/coords.py",
+      "figindex/shared/schemas.py",
+      "scripts/concurrency_check.py",
+      "scripts/generate_sample_pdf.py",
+      "scripts/local_to_server.py"
+    ],
+    "syntax_errors": []
+  },
+  "A8": {
+    "passed_count": 26,
+    "failed_count": 0
+  },
+  "B1": {
+    "point_count": 525,
+    "sample_failures": 0,
+    "sample_failure_details": []
+  },
+  "B2": {
+    "total_points": 525,
+    "doc_type_counts": {
+      "REPORT": 303,
+      "PUBLIC_REPORT": 76,
+      "PAPER": 145,
+      "IR": 1
+    },
+    "review_status_counts": {
+      "APPROVED": 455,
+      "PENDING_REVIEW": 70
+    },
+    "payload_key_counts": {
+      "element_id": 525,
+      "doc_name": 525,
+      "page_number": 525,
+      "bbox": 525,
+      "element_type": 525,
+      "image_path": 525,
+      "title_or_caption": 525,
+      "summary": 525,
+      "hashtags": 525,
+      "confidence_score": 525,
+      "review_status": 525,
+      "doc_title": 525,
+      "doc_type": 525,
+      "domain": 525,
+      "source_org": 525,
+      "authors": 525,
+      "publish_date": 525,
+      "entities": 525,
+      "extra_metadata": 525,
+      "structured_data": 362
+    },
+    "extra_meta_keys": [
+      "analyst",
+      "broker",
+      "company",
+      "industry",
+      "source",
+      "target",
+      "ticker",
+      "topic"
+    ],
+    "bbox_violation_count": 0,
+    "bbox_violation_ids": []
+  },
+  "B3": {
+    "ts_error_count": 0
+  }
+}
