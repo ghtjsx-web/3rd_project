@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv
 
 WORKDIR /app
 
@@ -21,11 +22,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Install pipeline python dependencies
-COPY requirements.txt .
+COPY pipeline/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy shared schemas
+COPY shared/ /app/shared/
+
 # Copy all pipeline scripts
-COPY *.py ./
+COPY pipeline/*.py ./
 
 CMD ["python", "run_index.py"]
 

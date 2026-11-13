@@ -5,6 +5,7 @@
 - **백엔드**: FastAPI (포트 8000)
 - **벡터 DB**: Qdrant (포트 6333, 컬렉션 `figindex_elements`)
 - **데이터 모델**: `figindex/shared/schemas.py`의 Pydantic 모델이 기준
+- 코딩 규칙과 이름 규칙은 `AGENTS.md`와 `docs/glossary.md`를 따른다.
 
 ## 2. 작업 규칙
 1. **사전 설명**: 코드를 고치기 전에 관련 파일을 먼저 읽고, 무엇을 어떻게 바꿀지 3~5줄로 설명한 뒤 시작합니다.

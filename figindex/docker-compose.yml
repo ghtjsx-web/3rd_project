@@ -30,6 +30,7 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - CROPS_DIR=/data/crops
       - PDFS_DIR=/data/pdfs
+      - ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv
       - WATCHFILES_FORCE_POLLING=true
       - GIT_COMMIT=${GIT_COMMIT:-unknown}
     volumes:
@@ -42,8 +43,8 @@ services:
 
   pipeline:
     build:
-      context: ./pipeline
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: pipeline/Dockerfile
     container_name: figindex-pipeline
     profiles:
       - index
@@ -54,6 +55,7 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - CROPS_DIR=/data/crops
       - PDFS_DIR=/data/pdfs
+      - ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv
     volumes:
       - ./pipeline:/app
       - ./data:/data

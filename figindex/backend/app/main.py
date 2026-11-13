@@ -21,9 +21,11 @@ load_dotenv()
 
 # Import shared schemas
 from shared.schemas import (
-    VisualElementSchema,
     ElementType,
     ReviewStatus,
+)
+from shared.schemas_legacy import (
+    VisualElementSchema,
     TableStructure,
 )
 
@@ -261,11 +263,14 @@ def get_dense_query_embedding(text: str) -> List[float]:
 
 
 class ReviewActionRequest(BaseModel):
-    action: str = Field(..., description="'APPROVE' 또는 'REJECT'")
+    review_action: Optional[str] = Field(None, description="'APPROVE' 또는 'REJECT' (schemas.py 표준)")
+    action: Optional[str] = Field(None, description="'APPROVE' 또는 'REJECT' (하위 호환용)")
     element_type: Optional[str] = None
-    title_or_caption: Optional[str] = None
+    caption: Optional[str] = Field(None, description="도표 제목/캡션 (schemas.py 표준)")
+    title_or_caption: Optional[str] = Field(None, description="도표 제목/캡션 (하위 호환용)")
     summary: Optional[str] = None
-    structured_data: Optional[Dict[str, Any]] = None
+    table_data: Optional[Dict[str, Any]] = Field(None, description="표 구조 데이터 (schemas.py 표준)")
+    structured_data: Optional[Dict[str, Any]] = Field(None, description="표 구조 데이터 (하위 호환용)")
 
 
 @app.get("/api/version")
@@ -397,7 +402,8 @@ def get_elements(
     source_org: Optional[str] = Query(None, description="출처 필터 (증권사, 발행기관, 학회·기관, 기업)"),
     target: Optional[str] = Query(None, description="대상 필터 (기업명, 주제, 논문 제목, 보고서명)"),
     publish_date: Optional[str] = Query(None, description="발행일 필터"),
-    status: Optional[str] = Query("APPROVED", description="검수 상태 필터 (기본값: APPROVED 승인 건만 노출)"),
+    review_status: Optional[str] = Query(None, description="검수 상태 필터 (schemas.py 표준)"),
+    status: Optional[str] = Query(None, description="검수 상태 필터 (하위 호환용, 미지정 시 APPROVED)"),
     limit: int = Query(60, ge=1, le=200, description="최대 조회 개수")
 ):
     """
@@ -411,12 +417,13 @@ def get_elements(
     elements: List[VisualElementSchema] = []
 
     # Build payload filters if specified
+    effective_status = review_status or status or "APPROVED"
     must_filters = []
-    if status:
+    if effective_status and effective_status.upper() != "ALL":
         must_filters.append(
             qmodels.FieldCondition(
                 key="review_status",
-                match=qmodels.MatchValue(value=status.upper())
+                match=qmodels.MatchValue(value=effective_status.upper())
             )
         )
     if element_type:
@@ -643,22 +650,28 @@ def submit_review_decision(element_id: str, req: ReviewActionRequest, _auth: Non
         point_id = results[0].id
         payload = dict(results[0].payload)
 
-        action = req.action.upper()
+        raw_action = req.review_action or req.action
+        if not raw_action:
+            raise HTTPException(status_code=400, detail="review_action(또는 action)은 필수입니다.")
+
+        action = raw_action.upper()
         if action == "APPROVE":
             payload["review_status"] = "APPROVED"
             payload["confidence_score"] = 1.0  # 관리자 검수 통과 완료
             if req.element_type:
                 payload["element_type"] = req.element_type.upper()
-            if req.title_or_caption:
-                payload["title_or_caption"] = req.title_or_caption
+            caption = req.caption if req.caption is not None else req.title_or_caption
+            if caption is not None:
+                payload["title_or_caption"] = caption
             if req.summary:
                 payload["summary"] = req.summary
-            if req.structured_data is not None:
-                payload["structured_data"] = req.structured_data
+            table_data = req.table_data if req.table_data is not None else req.structured_data
+            if table_data is not None:
+                payload["structured_data"] = table_data
         elif action == "REJECT":
             payload["review_status"] = "REJECTED"
         else:
-            raise HTTPException(status_code=400, detail="action은 'APPROVE' 또는 'REJECT'여야 합니다.")
+            raise HTTPException(status_code=400, detail="review_action은 'APPROVE' 또는 'REJECT'여야 합니다.")
 
         # Update in Qdrant
         client.set_payload(

@@ -18,10 +18,8 @@ from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 
-try:
-    from shared.schemas import VisualElementSchema, ElementType, ReviewStatus
-except ImportError:
-    from app.schemas import VisualElementSchema, ElementType, ReviewStatus
+from shared.schemas import ElementType, ReviewStatus
+from shared.schemas_legacy import VisualElementSchema
 
 try:
     from cropper import PDFCropper

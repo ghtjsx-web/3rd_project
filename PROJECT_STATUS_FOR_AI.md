@@ -1,6 +1,6 @@
 # FigIndex 프로젝트 현재 진행 상태 요약 (AI 분석·인수인계용)
 
-> 작성 시각: 2026-11-12  
+> 작성 시각: 2026-11-13  
 > 기준 커밋: `2864055` (`데이터셋정리 및 규칙설정`) · 현재 브랜치: `refactor/schema-unify`  
 > 저장소 루트: `c:\workAi\workProject\3차플젝`
 
@@ -26,29 +26,23 @@
 
 ## 2. 가장 중요한 구조적 특징 (AI 분석 시 필독)
 
-현재 저장소에는 **두 개의 코드/스키마 축**이 공존하고 있습니다.
+기준 스키마의 위치가 **`figindex/shared/schemas.py`로 단일화**되었으며, 525건 실서비스 호환을 위해 구 모델은 `figindex/shared/schemas_legacy.py`로 분리 관리되고 있습니다.
 
-### A. 실제 동작 중인 Docker 서비스 축 (`figindex/`)
-- **실행 위치**: `figindex/backend/`, `figindex/pipeline/`, `figindex/frontend/`, `figindex/shared/`
-- **사용 스키마**: `figindex/shared/schemas.py` (`VisualElementSchema`, `TableStructure`, `ElementType`, `ReviewStatus`)
-- **주요 필드/규격**:
-  - 제목: `title_or_caption`
-  - 표 데이터: `structured_data` (`TableStructure`)
-  - 좌표: `bbox` (문서상 `[ymin, xmin, ymax, xmax]`)
+### A. 현재 동작 중인 서비스와 스키마 구성 (`figindex/shared/`)
+- **표준 스키마 (SSOT)**: `figindex/shared/schemas.py`
+  - `Element`, `ElementSearchPayload`, `TableData`, `ConfidenceSignals`, `Document`, `Batch`, `ReviewLog` 등 11개 표준 모델 및 `CONFIDENCE_THRESHOLD`, `SIGNAL_WEIGHTS` 등 상수/Enum 정의 완료.
+- **임시 호환 스키마**: `figindex/shared/schemas_legacy.py`
+  - `VisualElementSchema`, `TableStructure` (프롬프트 4의 코드 필드 치환 완료 전까지 백엔드·파이프라인이 임시 참조).
+- **루트 `app/schemas.py`**:
+  - `figindex/shared/schemas.py`로 이전 안내하며 `ImportError` 발생 처리 (루트 `app/`은 차후 archive 예정).
 
-### B. 최신 코딩 규칙·표준 스키마 축 (`AGENTS.md`, `app/schemas.py`, `docs/glossary.md`)
-- 커밋 `2864055`에서 프로젝트 표준 규칙으로 확정된 기준입니다.
-- **사용 스키마**: `app/schemas.py`
-  - 상수: `CONFIDENCE_THRESHOLD = 0.80`, `PIPELINE_VERSION = "0.1.0"`, `ENTITY_DICTIONARY_PATH = "data/entity_dictionary.csv"`, `SIGNAL_WEIGHTS`, `LAYOUT_TO_ELEMENT`, `MERGE_CLASSES`
-  - Enum: `ElementType`, `DocStatus`, `ReviewStatus`, `ReviewAction`, `LayoutClass`, `EntityType`
-  - 모델: `Batch`, `Collection`, `Document`, `Page`, `Detection`, `TableData`, `ConfidenceSignals`, `Element`, `ElementSearchPayload`, `ReviewLog`, `EntityEntry`
-- **주요 필드/규격 차이**:
+### B. 최신 코딩 규칙·표준 스키마 축 (`AGENTS.md`, `figindex/shared/schemas.py`, `docs/glossary.md`)
+- **규칙 준수**: 모든 새 코드 및 리팩토링은 `figindex/shared/schemas.py`에 정의된 필드와 모델만 사용 (`AGENTS.md`, `docs/glossary.md` 참조).
+- **주요 필드/규격 차이 (프롬프트 4 & 5 마이그레이션 대상)**:
   - `VisualElementSchema` → `Element` / `ElementSearchPayload`
   - `title_or_caption` → 문서 `doc_title`, 요소 `caption`
   - `structured_data` → `table_data` (`TableData`)
-  - `bbox` → `[x0, y0, x1, y1]` (0~1 정규화, 좌상단 원점), 좌표 변환은 `app/coords.py` 사용 규칙(현재 `app/coords.py` 파일은 아직 없음)
-  - `AGENTS.md` 규칙상 향후 모든 코드 작성·수정은 `AGENTS.md`, `app/schemas.py`, `docs/glossary.md`를 따라야 하며, 세 파일은 사용자 명시 요청 없이 수정 금지
-- 참고: 루트의 `app/` 폴더(`app/main.py` v0.3 등)는 초기 스켈레톤 상태이며, 현재 Docker에서 실제 실행되는 앱은 `figindex/`입니다.
+  - `bbox` → `[x0, y0, x1, y1]` (0~1 정규화, 좌상단 원점), 좌표 변환은 `figindex/shared/coords.py` 사용 규칙(프롬프트 3 작성 대상)
 
 ---
 
@@ -88,24 +82,53 @@
      - `ElementSearchPayload`에 `authors: List[str]` 추가 (기존 525건의 `authors`를 `extra_metadata["legacy"]`로 밀어 넣지 않고 직접 보존 가능)
      - `docs/glossary.md`에 `doc_id` 발급 및 문서 메타데이터 추출은 `orchestrator`, `Element` 생성은 `extractor`로 역할 분담 명시
 
+7. **필수 코드 및 Qdrant 페이로드 대상 schemas.py 미등재 필드 전수 조사 및 호환성 조치 (2026-11-13)**
+   - `app/schemas.py`(11개 모델, 58개 표준 필드) 기준으로 백엔드, 파이프라인, 프론트엔드, Qdrant 페이로드 전수 조사 완료.
+   - **즉시 호환 조치 (`figindex/backend/app/main.py`)**:
+     - `ReviewActionRequest`: `review_action`, `caption`, `table_data`를 schemas.py 표준 필드로 최우선 수용하고, 기존 프론트엔드 호환용 `action`, `title_or_caption`, `structured_data` 폴백 허용.
+     - `GET /api/elements`: 쿼리 파라미터 `review_status`를 표준으로 추가하고 기존 `status` 폴백 지원.
+   - **DB 마이그레이션 대상 분리**:
+     - Qdrant 컬렉션 실데이터(525건) 및 프론트엔드가 참조하는 `title_or_caption`(`caption`), `structured_data`(`table_data`), `bbox` `[ymin, xmin, ymax, xmax]`(`[x0, y0, x1, y1]`)는 코드만 임의 수정 시 서비스 장애가 발생하므로, `antigravity_스키마통합_프롬프트.md`의 프롬프트 4(코드 치환) 및 프롬프트 5(컬렉션 v2 이전) 단계에서 일괄 전환하기로 확정.
+   - **엔티티 무관 내부 필드 구분**:
+     - `AdminVerifyRequest.password`(인증 DTO), `cropper.py`의 `crop_info` 임시 반환 키, `orchestrator.py`의 `target/broker/ticker` 등은 `extra_metadata` 내부 저장 및 내부 파이프라인 변수로 정상 분류.
+
+8. **기준 스키마 위치 이전 및 레거시 분리 완료 (프롬프트 2, 2026-11-13)**
+   - `app/schemas.py`의 최신 표준 스키마를 `figindex/shared/schemas.py`로 덮어써 Single Source of Truth(SSOT) 단일화 완료.
+   - 기존 실서비스 호환을 위해 `VisualElementSchema`, `TableStructure`는 `figindex/shared/schemas_legacy.py`로 임시 분리.
+   - `figindex/backend/app/main.py`, `pipeline/extractor.py`, `orchestrator.py`, `evaluator.py`의 import를 `shared.schemas` 및 `shared.schemas_legacy`로 정리하고 `app.schemas` 폴백 import 전면 제거.
+   - 루트 `app/schemas.py`는 이동 안내 `ImportError` 파일로 변경.
+   - `AGENTS.md`, `docs/glossary.md`, `PROJECT_RULES.md`의 스키마 및 좌표 모듈 참조 경로를 `figindex/shared/`로 갱신 완료 (`app.schemas` 잔존 0건).
+
+9. **환경변수 경로 유연화 및 파이프라인 Docker 빌드 보완 (2026-11-13)**
+   - `figindex/shared/schemas.py`: `ENTITY_DICTIONARY_PATH = os.getenv("ENTITY_DICTIONARY_PATH", "data/entity_dictionary.csv")`로 변경하여 호스트 환경과 컨테이너 환경(`/data/entity_dictionary.csv`) 모두 지원.
+   - `figindex/pipeline/Dockerfile`: `COPY shared/ /app/shared/` 복사 구문 추가 및 `figindex/docker-compose.yml`의 파이프라인 빌드 컨텍스트를 `.`로 일원화하여 독립 빌드 시 스키마 누락 방지.
+   - `docker-compose.yml`, `docker-compose.prod.yml`, `backend/Dockerfile`, `pipeline/Dockerfile`에 `ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv` 환경변수 반영.
+
+10. **공통 좌표 변환 모듈 및 단위 테스트 작성 완료 (프롬프트 3, 2026-11-13)**
+    - `figindex/shared/coords.py` 생성: 표준 라이브러리만을 사용하여 `validate_bbox`, `clip_bbox`, `pt_to_norm`, `norm_to_pt`, `px_to_norm`, `norm_to_px`, `pt_to_px_scale`, `from_legacy_yxyx`, `union_bbox`, `pad_bbox_pt`, `bbox_area`, `iou` 등 12개 좌표 변환·검증 함수 구현.
+    - `fitz`, `numpy`, `ultralytics` 등 외부 의존성을 배제하여 백엔드/파이프라인 양쪽에서 경량 import 보장.
+    - 단위 테스트 `figindex/pipeline/test_coords.py` 9개 케이스 작성 및 100% 통과 (기존 테스트 17건 포함 총 26건 통과).
+
 ---
 
-## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 2~6 진행 전 점검 결과)
+## 3.5 확인된 문제점 및 기술적 판단 (프롬프트 4~6 진행 전 점검 결과)
 
 1. **`inventory.md`와 최신 `app/schemas.py` 간 `authors` 차이**
-   - `inventory.md` 작성 직후 `app/schemas.py`의 `ElementSearchPayload`에 `authors`가 추가되었으므로, 5단계(`migrate_to_v2.py`)에서는 `authors`를 `extra_metadata["legacy"]`가 아닌 `ElementSearchPayload.authors`로 직접 이관해야 합니다.
+   - `inventory.md` 작성 직후 `ElementSearchPayload`에 `authors`가 추가되었으므로, 5단계(`migrate_to_v2.py`)에서는 `authors`를 `extra_metadata["legacy"]`가 아닌 `ElementSearchPayload.authors`로 직접 이관해야 합니다.
 2. **`bbox` 형식은 일관되나 기존 크롭/분류 품질 오탐 사례 존재**
    - `bbox` 좌표 규격 자체는 525건 전체가 100% 일관되어 스키마 통합에는 문제가 없습니다 (`[bbox[1], bbox[0], bbox[3], bbox[2]]`로 즉시 변환 가능).
    - 다만 `bbox_check/` 시각화에서 문서 목차가 `TABLE`로(`01_TABLE_fig-b5f2_p6.png`), 회화 사진이 `CHART`로(`05_CHART_fig-e24f_p2.png`) 오분류된 사례가 확인되었습니다. 이는 스키마 통합 이후 DocLayout-YOLO 통합 단계에서 개선해야 할 과제입니다.
-3. **`ENTITY_DICTIONARY_PATH`와 컨테이너 `/data/` 경로 불일치**
-   - `app/schemas.py` 기본값은 `"data/entity_dictionary.csv"`이나 `backend`/`pipeline` 컨테이너의 `WORKDIR`은 `/app`이고 데이터는 `/data/entity_dictionary.csv`에 마운트됩니다. 환경변수 `ENTITY_DICTIONARY_PATH`로 덮어쓸 수 있게 처리해야 합니다.
-4. **`pipeline/Dockerfile`의 `shared/` 복사 누락 (잠재 이슈)**
-   - 로컬 `docker-compose.yml`은 `./shared:/app/shared` 볼륨 마운트로 정상 동작하지만, `figindex/pipeline/Dockerfile`에는 `COPY *.py ./`만 있어 Compose 없이 단독 이미지 빌드 시 `shared/`가 누락됩니다.
+3. **`ENTITY_DICTIONARY_PATH` 경로 유연화 (해결 완료)**
+   - `os.getenv` 및 컨테이너 환경변수(`ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv`) 설정으로 호스트·컨테이너 양방향 호환 완료.
+4. **`pipeline/Dockerfile`의 `shared/` 복사 누락 (해결 완료)**
+   - `pipeline/Dockerfile`에 `COPY shared/ /app/shared/` 추가 및 compose build context `.` 정렬 완료.
 5. **기존 525건 마이그레이션 시 불완전 레코드 주의**
    - `structured_data` 누락 1건(`524/525`), `extra_metadata.target` 누락 118건(`407/525`)이 확인되었습니다. `migrate_to_v2.py` 실행 시 `--dry-run`으로 `TableData` 검증 실패 건수를 먼저 확인해야 합니다.
-6. **루트 `app/` 폴백 import 잔존**
-   - `figindex/pipeline/`의 `evaluator.py`, `extractor.py`, `orchestrator.py`에 `except ImportError:` 폴백으로 `from app.schemas import ...`가 남아 있어, 루트 `app/`을 `archive/app_v0_3/`로 이동할 때 `from shared.schemas import ...`로 단일화해야 합니다.
-- **종합 판단**: 위 6건 모두 원인과 대응 방법이 명확하므로, 현재 상태에서 스키마 통합 **프롬프트 2(기준 파일 위치 옮기기)**로 안전하게 진행 가능합니다.
+6. **루트 `app/` 폴백 import 잔존 해결 완료**
+   - `figindex/pipeline/`의 `evaluator.py`, `extractor.py`, `orchestrator.py`에 남아 있던 `from app.schemas import ...` 폴백이 모두 제거되어 `shared`로 단일화 완료되었습니다.
+7. **백엔드 DTO는 표준 수용 완료, Qdrant 및 UI 계층은 마이그레이션 대기 중**
+   - `backend/app/main.py`는 `review_action`, `caption`, `table_data`, `review_status`를 수용하도록 업데이트되었으나, 실제 Qdrant 저장 페이로드 및 프론트엔드 연동은 여전히 `title_or_caption`, `structured_data` 기반으로 동작 중입니다. 프롬프트 4 & 5 실행 전까지는 양방향 호환을 유지해야 합니다.
+- **종합 판단**: 기준 스키마 위치 이전(프롬프트 2) 및 공통 좌표 모듈 구현(프롬프트 3)이 완료되었으므로, 다음 단계인 **프롬프트 4(코드 레벨 필드명 치환: `title_or_caption` → `caption`, `structured_data` → `table_data`, `bbox` 규격 전환)**로 안전하게 진행 가능합니다.
 
 ---
 
@@ -130,8 +153,8 @@
 ├── AGENTS.md                           # AI 코딩 규칙 (app/schemas.py, glossary.md 준수 필수)
 ├── PROJECT_RULES.md                    # 프로젝트 작업 규칙
 ├── README.md                           # 전체 안내 및 실행 가이드
-├── app/                                # [신규 표준 스키마 및 초기 로컬 코드]
-│   ├── schemas.py                      # 표준 Single Source of Truth (Element, TableData, ReviewLog 등)
+├── app/                                # [레거시 초기 코드 - archive 이전 예정]
+│   ├── schemas.py                      # ImportError 안내 파일 (figindex/shared/schemas.py로 이동됨)
 │   ├── main.py                         # v0.3 초기 API 스켈레톤
 │   ├── core/, pipeline/, services/
 ├── docs/
@@ -145,9 +168,12 @@
 └── figindex/                           # [현재 Docker로 실제 구동 중인 앱]
     ├── docker-compose.yml              # 로컬 개발용 (QDRANT_MODE=server, Hot Reload)
     ├── docker-compose.prod.yml         # 로컬 프로덕션 검증용
-    ├── shared/schemas.py               # 현재 figindex 앱이 참조하는 기존 스키마
+    ├── shared/
+    │   ├── schemas.py                  # 표준 Single Source of Truth (Element, TableData, ReviewLog 등)
+    │   ├── schemas_legacy.py           # 임시 호환용 (VisualElementSchema, TableStructure)
+    │   └── coords.py                   # 공통 좌표 변환 모듈 (정규화, pt/px 변환, IoU, 패딩)
     ├── backend/app/main.py             # FastAPI 서버 (포트 8000)
-    ├── pipeline/                       # 색인 파이프라인 (run_index.py, orchestrator.py 등)
+    ├── pipeline/                       # 색인 파이프라인 (run_index.py, orchestrator.py, test_coords.py 등)
     ├── frontend/app/                   # Next.js 14 UI (포트 3000)
     └── data/                           # pdfs(118), crops(578), qdrant(525), qdrant_local(118)
 ```
@@ -156,15 +182,15 @@
 
 ## 6. 다음 단계 / 검토가 필요한 과제
 
-1. **표준 스키마(`AGENTS.md` / `app/schemas.py`)와 실행 코드(`figindex/`) 통합 여부 결정**
-   - 현재 동작 중인 `figindex/`는 `figindex/shared/schemas.py`(`VisualElementSchema`, `title_or_caption`, `structured_data`, `[ymin, xmin, ymax, xmax]`)를 사용 중이고, `AGENTS.md`는 `app/schemas.py`(`Element`, `caption`, `table_data`, `[x0, y0, x1, y1]`) 사용을 요구함
-   - `figindex/`를 `app/schemas.py` 기준으로 마이그레이션할지, 혹은 브리지/어댑터를 둘지 결정 필요
-2. **좌표 모듈(`app/coords.py`) 구현**
-   - `AGENTS.md`와 `docs/glossary.md`에 명시된 PyMuPDF(`pt`)·YOLO(`px`)·화면(`px`) 간 `[x0, y0, x1, y1]` 변환 모듈 신규 작성 필요
-3. **탐지/추출 고도화**
-   - `yolo_trial.py`로 시험한 DocLayout-YOLO 탐지 로직을 본 크로퍼(`cropper.py`)에 통합할지 검토
-   - `ConfidenceSignals` 5개 신호 및 `SIGNAL_WEIGHTS` 재정규화 로직 정렬
-   - `entity_dictionary.csv` 데이터 확충 및 고유명사 치환 적용
+1. **코드 레벨 필드명 전면 치환 (프롬프트 4)**
+   - `title_or_caption` → `caption`, `structured_data` → `table_data`, `VisualElementSchema` → `Element` / `ElementSearchPayload`로 코드베이스 일괄 교체.
+   - `figindex/shared/coords.py` 함수들을 `cropper.py`, `extractor.py`에 연결.
+2. **Qdrant v2 컬렉션 마이그레이션 (프롬프트 5)**
+   - 기존 525건 데이터를 `figindex_elements_v2`로 변환 이전하고 스왑(`alias` 또는 설정 변경).
+3. **탐지/추출 고도화 (DocLayout-YOLO & 엔티티 사전)**
+   - `yolo_trial.py` 결과를 본 크로퍼(`cropper.py`)에 정식 통합.
+   - `ConfidenceSignals` 5개 신호 및 `SIGNAL_WEIGHTS` 재정규화 로직 정렬.
+   - `entity_dictionary.csv` 데이터 확충 및 고유명사 치환 적용.
 4. **등록 작업·검수 이력·평가 고도화**
    - `Batch`, `Document`, `ReviewLog`(추가 전용 이력) 및 `docs/glossary.md` 12절 지표(`crop_recall`, `table_valid_rate`, `cell_accuracy`, `precision_at_5` 등) 기반 정량 평가 연결
 

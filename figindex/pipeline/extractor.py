@@ -10,20 +10,14 @@ from typing import Dict, Any, Optional, List
 from google import genai
 from PIL import Image
 
-try:
-    from shared.schemas import (
-        ElementType,
-        VisualElementSchema,
-        TableStructure,
-        ReviewStatus
-    )
-except ImportError:
-    from app.schemas import (
-        ElementType,
-        VisualElementSchema,
-        TableStructure,
-        ReviewStatus
-    )
+from shared.schemas import (
+    ElementType,
+    ReviewStatus
+)
+from shared.schemas_legacy import (
+    VisualElementSchema,
+    TableStructure
+)
 
 try:
     from evaluator import ConfidenceEvaluator

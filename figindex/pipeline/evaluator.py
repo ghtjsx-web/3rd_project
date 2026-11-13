@@ -1,8 +1,6 @@
 from typing import Dict, Any, Optional
-try:
-    from shared.schemas import ReviewStatus, TableStructure, ElementType
-except ImportError:
-    from app.schemas import ReviewStatus, TableStructure, ElementType
+from shared.schemas import ReviewStatus, ElementType
+from shared.schemas_legacy import TableStructure
 
 
 class ConfidenceEvaluator:

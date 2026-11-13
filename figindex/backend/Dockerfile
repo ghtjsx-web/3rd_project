@@ -10,6 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
     PDFS_DIR=/data/pdfs \
     QDRANT_LOCAL_PATH=/data/qdrant_local \
     CACHE_DIR=/data/cache \
+    ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv \
     HF_HOME=/root/.cache/huggingface
 
 WORKDIR /app

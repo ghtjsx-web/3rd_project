@@ -1,6 +1,6 @@
 # FigIndex 용어집
 
-> 이름의 원본은 `app/schemas.py`입니다. 이 문서와 schemas.py가 다르면 schemas.py가 맞고, 이 문서를 고칩니다.
+> 이름의 원본은 `figindex/shared/schemas.py`입니다. 이 문서와 schemas.py가 다르면 schemas.py가 맞고, 이 문서를 고칩니다.
 > 새 용어·필드가 필요하면 두 파일을 함께 고치는 PR을 올리고 팀장 승인을 받습니다.
 
 ## 1. 데이터 단위
@@ -121,7 +121,7 @@ DocLayout-YOLO의 클래스 이름은 모델 출력 그대로 씁니다. 1단계
 
 - 형식: **`[x0, y0, x1, y1]`**, 페이지 크기 대비 **0~1 정규화**, **좌상단 원점**
 - `Detection.bbox`는 병합·패딩 **전**, `Element.bbox`는 병합·패딩 **후** 박스입니다.
-- PyMuPDF(pt), YOLO(px), 화면(px)과의 변환은 **`app/coords.py`의 함수로만** 합니다. 페이지 크기는 `Page.width_pt`, `Page.height_pt`를 씁니다.
+- PyMuPDF(pt), YOLO(px), 화면(px)과의 변환은 **`figindex/shared/coords.py`의 함수로만** 합니다. 페이지 크기는 `Page.width_pt`, `Page.height_pt`를 씁니다.
 - 설계서 v0.4의 `[ymin, xmin, ymax, xmax]`에서 변경했습니다.
 
 ## 9. 표 수치 저장 규칙 (`TableData`)
