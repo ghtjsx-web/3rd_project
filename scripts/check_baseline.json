@@ -1,84 +1,86 @@
 {
   "meta": {
-    "created_at": "2026-11-13T10:39:36.335196",
-    "commit": "7b0a01bb98d5eef31e6847d67c3fa5081d5cb5c3",
+    "created_at": "2026-11-13T15:42:27.877453",
+    "commit": "53f35e41f1eb5c7ea34c4f73f0980e92d28f1f97",
     "mode": "full"
   },
   "A1": {
     "branch": "refactor/schema-unify",
-    "changed_files": [
-      ".gitignore",
-      "PROJECT_STATUS_FOR_AI.md"
-    ]
+    "changed_files": [],
+    "protected_files": [
+      "AGENTS.md",
+      "PROJECT_RULES.md",
+      "docs/glossary.md",
+      "figindex/shared/schemas.py",
+      "scripts/check_baseline.json",
+      "scripts/check_config.json",
+      "scripts/check_state.py"
+    ],
+    "authorized_protected": [],
+    "unauthorized_protected": []
   },
   "A2": {
-    "total_strict": 131,
-    "total_general": 61,
+    "total_strict": 114,
+    "total_general": 43,
     "strict_counts": {
       "figindex/backend/app/main.py": {
+        "title_or_caption": 3,
         "structured_data": 3,
         "VisualElementSchema": 12,
-        "TableStructure": 1,
-        "title_or_caption": 3
+        "TableStructure": 1
       },
       "figindex/pipeline/evaluator.py": {
         "structured_data": 8,
         "TableStructure": 3
       },
       "figindex/pipeline/extractor.py": {
+        "title_or_caption": 5,
         "structured_data": 8,
         "VisualElementSchema": 5,
-        "TableStructure": 2,
-        "title_or_caption": 5
+        "TableStructure": 2
       },
       "figindex/pipeline/orchestrator.py": {
-        "VisualElementSchema": 5,
-        "title_or_caption": 2
-      },
-      "figindex/pipeline/rename_reports.py": {
-        "file_name": 14
+        "title_or_caption": 2,
+        "VisualElementSchema": 5
       },
       "figindex/pipeline/run_index.py": {
-        "structured_data": 2,
-        "title_or_caption": 2
+        "title_or_caption": 2,
+        "structured_data": 2
       },
       "figindex/pipeline/test_metadata_generalization.py": {
-        "structured_data": 1,
-        "title_or_caption": 1
-      },
-      "figindex/pipeline/yolo_trial.py": {
-        "file_name": 3
+        "title_or_caption": 1,
+        "structured_data": 1
       },
       "figindex/frontend/app/page.tsx": {
+        "title_or_caption": 3,
         "structured_data": 1,
-        "TableStructure": 2,
-        "title_or_caption": 3
+        "TableStructure": 2
       },
       "figindex/frontend/app/components/ComparisonModal.tsx": {
+        "title_or_caption": 9,
         "structured_data": 3,
-        "TableStructure": 2,
-        "title_or_caption": 9
+        "TableStructure": 2
       },
       "figindex/frontend/app/components/ReviewTab.tsx": {
+        "title_or_caption": 11,
         "structured_data": 5,
-        "TableStructure": 2,
-        "title_or_caption": 11
+        "TableStructure": 2
       },
       "figindex/frontend/app/elements/[id]/page.tsx": {
+        "title_or_caption": 3,
         "structured_data": 8,
-        "TableStructure": 2,
-        "title_or_caption": 3
+        "TableStructure": 2
       }
     },
     "general_counts": {
       "figindex/backend/app/main.py": {
-        "filename": 1,
         "action": 3,
         "version": 1,
         "status": 3,
         "title": 1,
         "model": 1,
-        "type": 1
+        "type": 1,
+        "filename": 1
       },
       "figindex/pipeline/cropper.py": {
         "page": 2,
@@ -94,32 +96,20 @@
         "page": 1,
         "model": 1
       },
-      "figindex/pipeline/rename_reports.py": {
-        "action": 1,
-        "model": 1
-      },
       "figindex/pipeline/run_index.py": {
         "action": 2,
         "type": 4
       },
       "figindex/pipeline/select_pdfs.py": {
-        "done": 1,
-        "action": 1
+        "action": 1,
+        "done": 1
       },
-      "figindex/pipeline/yolo_trial.py": {
-        "conf": 1,
-        "filename": 1,
-        "page": 4,
-        "label": 1,
-        "figure": 4,
-        "title": 1,
-        "model": 1,
-        "type": 3,
-        "confidence": 3
+      "figindex/pipeline/test_pdf_text.py": {
+        "page": 3
       },
       "figindex/shared/schemas.py": {
-        "figure": 1,
-        "title": 1
+        "title": 1,
+        "figure": 1
       },
       "scripts/concurrency_check.py": {
         "status": 8,
@@ -129,10 +119,211 @@
         "action": 1,
         "type": 1
       }
-    }
+    },
+    "sorted_strict_files": [
+      {
+        "file": "figindex/pipeline/extractor.py",
+        "total": 20,
+        "counts": {
+          "title_or_caption": 5,
+          "structured_data": 8,
+          "VisualElementSchema": 5,
+          "TableStructure": 2
+        }
+      },
+      {
+        "file": "figindex/backend/app/main.py",
+        "total": 19,
+        "counts": {
+          "title_or_caption": 3,
+          "structured_data": 3,
+          "VisualElementSchema": 12,
+          "TableStructure": 1
+        }
+      },
+      {
+        "file": "figindex/frontend/app/components/ReviewTab.tsx",
+        "total": 18,
+        "counts": {
+          "title_or_caption": 11,
+          "structured_data": 5,
+          "TableStructure": 2
+        }
+      },
+      {
+        "file": "figindex/frontend/app/components/ComparisonModal.tsx",
+        "total": 14,
+        "counts": {
+          "title_or_caption": 9,
+          "structured_data": 3,
+          "TableStructure": 2
+        }
+      },
+      {
+        "file": "figindex/frontend/app/elements/[id]/page.tsx",
+        "total": 13,
+        "counts": {
+          "title_or_caption": 3,
+          "structured_data": 8,
+          "TableStructure": 2
+        }
+      },
+      {
+        "file": "figindex/pipeline/evaluator.py",
+        "total": 11,
+        "counts": {
+          "structured_data": 8,
+          "TableStructure": 3
+        }
+      },
+      {
+        "file": "figindex/pipeline/orchestrator.py",
+        "total": 7,
+        "counts": {
+          "title_or_caption": 2,
+          "VisualElementSchema": 5
+        }
+      },
+      {
+        "file": "figindex/frontend/app/page.tsx",
+        "total": 6,
+        "counts": {
+          "title_or_caption": 3,
+          "structured_data": 1,
+          "TableStructure": 2
+        }
+      },
+      {
+        "file": "figindex/pipeline/run_index.py",
+        "total": 4,
+        "counts": {
+          "title_or_caption": 2,
+          "structured_data": 2
+        }
+      },
+      {
+        "file": "figindex/pipeline/test_metadata_generalization.py",
+        "total": 2,
+        "counts": {
+          "title_or_caption": 1,
+          "structured_data": 1
+        }
+      }
+    ],
+    "sorted_general_files": [
+      {
+        "file": "figindex/backend/app/main.py",
+        "total": 11,
+        "counts": {
+          "action": 3,
+          "version": 1,
+          "status": 3,
+          "title": 1,
+          "model": 1,
+          "type": 1,
+          "filename": 1
+        }
+      },
+      {
+        "file": "scripts/concurrency_check.py",
+        "total": 9,
+        "counts": {
+          "status": 8,
+          "type": 1
+        }
+      },
+      {
+        "file": "figindex/pipeline/run_index.py",
+        "total": 6,
+        "counts": {
+          "action": 2,
+          "type": 4
+        }
+      },
+      {
+        "file": "figindex/pipeline/cropper.py",
+        "total": 3,
+        "counts": {
+          "page": 2,
+          "type": 1
+        }
+      },
+      {
+        "file": "figindex/pipeline/test_pdf_text.py",
+        "total": 3,
+        "counts": {
+          "page": 3
+        }
+      },
+      {
+        "file": "figindex/pipeline/evaluator.py",
+        "total": 2,
+        "counts": {
+          "status": 2
+        }
+      },
+      {
+        "file": "figindex/pipeline/orchestrator.py",
+        "total": 2,
+        "counts": {
+          "page": 1,
+          "model": 1
+        }
+      },
+      {
+        "file": "figindex/pipeline/select_pdfs.py",
+        "total": 2,
+        "counts": {
+          "action": 1,
+          "done": 1
+        }
+      },
+      {
+        "file": "figindex/shared/schemas.py",
+        "total": 2,
+        "counts": {
+          "title": 1,
+          "figure": 1
+        }
+      },
+      {
+        "file": "scripts/local_to_server.py",
+        "total": 2,
+        "counts": {
+          "action": 1,
+          "type": 1
+        }
+      },
+      {
+        "file": "figindex/pipeline/extractor.py",
+        "total": 1,
+        "counts": {
+          "model": 1
+        }
+      }
+    ],
+    "legacy_allowed_files": [
+      "figindex/pipeline/audit_doc_names.py",
+      "figindex/pipeline/migrate_to_v2.py",
+      "figindex/pipeline/rename_reports.py",
+      "figindex/pipeline/test_coords.py",
+      "figindex/pipeline/test_docs_naming.py",
+      "figindex/pipeline/yolo_trial.py",
+      "figindex/shared/schemas_legacy.py",
+      "scripts/migrate_source_target.py"
+    ],
+    "exclude_patterns": [
+      ".next",
+      "__pycache__",
+      "app",
+      "docs",
+      "figindex/data",
+      "node_modules",
+      "scripts/check_state.py"
+    ]
   },
   "A3": {
-    "total_status_literals": 48,
+    "total_status_literals": 47,
     "found_literals": {
       "figindex/backend/app/main.py": {
         "APPROVED": 3,
@@ -160,9 +351,6 @@
         "APPROVED": 1,
         "CHART": 2
       },
-      "figindex/pipeline/yolo_trial.py": {
-        "TABLE": 1
-      },
       "figindex/shared/schemas.py": {
         "TABLE": 1,
         "CHART": 1,
@@ -186,11 +374,10 @@
     }
   },
   "A4": {
-    "total_threshold_literals": 7,
+    "total_threshold_literals": 5,
     "found_thresholds": {
       "figindex/backend/app/main.py": 2,
       "figindex/pipeline/evaluator.py": 2,
-      "figindex/pipeline/test_coords.py": 2,
       "figindex/shared/schemas.py": 1
     }
   },
@@ -228,32 +415,43 @@
     "duplicate_models": []
   },
   "A7": {
-    "checked_files": 19,
+    "checked_files": 30,
     "checked_files_list": [
       "figindex/backend/app/main.py",
+      "figindex/pipeline/audit_doc_names.py",
       "figindex/pipeline/cropper.py",
       "figindex/pipeline/evaluator.py",
       "figindex/pipeline/export_to_local_qdrant.py",
       "figindex/pipeline/extractor.py",
       "figindex/pipeline/init_collection.py",
+      "figindex/pipeline/migrate_to_v2.py",
       "figindex/pipeline/orchestrator.py",
+      "figindex/pipeline/pdf_text.py",
       "figindex/pipeline/rename_reports.py",
       "figindex/pipeline/run_index.py",
       "figindex/pipeline/select_pdfs.py",
+      "figindex/pipeline/test_audit_doc_names.py",
       "figindex/pipeline/test_coords.py",
       "figindex/pipeline/test_metadata_generalization.py",
+      "figindex/pipeline/test_migrate_to_v2.py",
       "figindex/pipeline/test_parse_filename.py",
+      "figindex/pipeline/test_pdf_text.py",
+      "figindex/pipeline/test_schemas_table_units.py",
       "figindex/pipeline/yolo_trial.py",
       "figindex/shared/coords.py",
       "figindex/shared/schemas.py",
+      "figindex/shared/schemas_legacy.py",
       "scripts/concurrency_check.py",
       "scripts/generate_sample_pdf.py",
-      "scripts/local_to_server.py"
+      "scripts/local_to_server.py",
+      "scripts/migrate_source_target.py",
+      "scripts/test_check_state_a1.py",
+      "scripts/test_check_state_a2.py"
     ],
     "syntax_errors": []
   },
   "A8": {
-    "passed_count": 26,
+    "passed_count": 58,
     "failed_count": 0
   },
   "B1": {
