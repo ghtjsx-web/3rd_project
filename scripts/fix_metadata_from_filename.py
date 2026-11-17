@@ -305,7 +305,8 @@ def main() -> None:
 
         file_pub_date = parsed_fn["publish_date"]
         file_source_org = parsed_fn["source_org"]
-        file_company = parsed_fn["company"]
+        file_target = parsed_fn.get("target") or parsed_fn.get("company")
+        file_company = file_target
 
         # 변경 대상 필드 확인
         doc_needs_update = False
@@ -314,7 +315,8 @@ def main() -> None:
         cur_source_org = sample_payload.get("source_org") or ""
         cur_pub_date = str(sample_payload.get("publish_date") or "")
         cur_extra = sample_payload.get("extra_metadata") or {}
-        cur_company = cur_extra.get("company") if isinstance(cur_extra, dict) else None
+        cur_target = (cur_extra.get("target") or cur_extra.get("company")) if isinstance(cur_extra, dict) else None
+        cur_company = cur_target
         cur_entities = sample_payload.get("entities") or []
 
         diff_logs = []
@@ -329,9 +331,9 @@ def main() -> None:
             diff_logs.append(f"publish_date: '{cur_pub_date}' -> '{file_pub_date}'")
             doc_needs_update = True
 
-        # 3. extra_metadata.company 비교
-        if cur_company != file_company:
-            diff_logs.append(f"extra_metadata.company: '{cur_company}' -> '{file_company}'")
+        # 3. extra_metadata.target/company 비교
+        if cur_target != file_target:
+            diff_logs.append(f"extra_metadata.target: '{cur_target}' -> '{file_target}'")
             doc_needs_update = True
 
         # 4. entities 종목명 포함 확인

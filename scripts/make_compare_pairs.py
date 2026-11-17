@@ -84,12 +84,12 @@ def collect_documents_from_points(points: List[Dict[str, Any]]) -> Dict[str, Dic
 
         if norm_doc_name not in docs:
             extra = payload.get("extra_metadata") or {}
-            # extra_metadata.company 최우선, 없으면 target/company fallback
+            # extra_metadata.target 최우선, 없으면 extra_metadata.company 또는 payload.target/company
             comp = None
             if isinstance(extra, dict):
-                comp = extra.get("company") or extra.get("target")
+                comp = extra.get("target") or extra.get("company")
             if not comp:
-                comp = payload.get("target")
+                comp = payload.get("target") or payload.get("company")
 
             norm_comp = unicodedata.normalize("NFC", str(comp)).strip() if comp else None
 

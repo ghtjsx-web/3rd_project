@@ -110,7 +110,8 @@ def compare_company_metric(
     pairs = load_compare_pairs()
     matched_group = None
     for g in pairs:
-        if g.get("company") == company:
+        grp_target = g.get("target") or g.get("company")
+        if grp_target == company:
             matched_group = g
             break
 
@@ -148,9 +149,10 @@ def compare_company_metric(
             "second_candidate_element_id": match_res["second_candidate_element_id"],
             "table_data": match_res["table_data"],
             "match_status": match_res["match_status"],
+            "match_rule": match_res.get("match_rule"),
         })
 
-    aligned_rows = align_matched_tables(doc_results)
+    aligned_rows = align_matched_tables(doc_results, metric=metric)
 
     return {
         "company": company,

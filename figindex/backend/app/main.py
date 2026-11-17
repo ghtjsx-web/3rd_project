@@ -734,6 +734,7 @@ class MatchedDocComparison(BaseModel):
     second_candidate_element_id: Optional[str] = None
     table_data: Optional[TableData] = None
     match_status: str = "not_found"
+    match_rule: Optional[str] = None
 
 
 class AlignedComparisonRow(BaseModel):

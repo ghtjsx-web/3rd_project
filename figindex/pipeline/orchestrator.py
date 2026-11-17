@@ -29,6 +29,7 @@ from shared.schemas import (
     DocStatus,
     PIPELINE_VERSION,
 )
+from shared.sparse import build_sparse_vector, generate_point_id
 
 try:
     from cropper import PDFCropper
@@ -321,7 +322,6 @@ def parse_rpt_filename(doc_name: str) -> Optional[Dict[str, Any]]:
     return {
         "publish_date": parsed_date,
         "source_org": source_org,
-        "company": company,
         "target": company,
         "doc_type": "REPORT",
     }
@@ -342,7 +342,6 @@ def parse_new_filename(doc_name: str) -> Optional[Dict[str, Any]]:
         "publish_date": res["date"],
         "target": res["target"],
         "source_org": res["source"],
-        "company": res["target"] if res["doc_type"] == "REPORT" else None,
     }
 
 
@@ -587,15 +586,8 @@ class ExtractionPipelineOrchestrator:
         }
 
     def tokenize_korean_bm25(self, text: str) -> Dict[int, float]:
-        """Tokenize text with Kiwi and return sparse hash frequencies."""
-        tokens = self.kiwi.tokenize(text)
-        token_counts: Dict[int, float] = {}
-        valid_tags = {"NNG", "NNP", "NR", "VV", "VA", "SL"}
-        for t in tokens:
-            if t.tag in valid_tags and len(t.form) > 1:
-                token_hash = abs(hash(t.form)) % (2**31 - 1)
-                token_counts[token_hash] = token_counts.get(token_hash, 0.0) + 1.0
-        return token_counts
+        """Tokenize text with Kiwi and return sparse hash frequencies using deterministic build_sparse_vector."""
+        return build_sparse_vector(text)
 
     def get_dense_embedding(self, text: str) -> List[float]:
         """Get 1536 dim dense embedding using OpenAI text-embedding-3-small."""
@@ -628,12 +620,12 @@ class ExtractionPipelineOrchestrator:
         """Upsert a single ElementSearchPayload into Qdrant collection."""
         text_to_embed = f"{element.caption} {element.summary} {' '.join(element.hashtags)} {element.doc_title or ''} {element.source_org or ''} {' '.join(element.entities)}"
         dense_vec = self.get_dense_embedding(text_to_embed)
-        sparse_tokens = self.tokenize_korean_bm25(text_to_embed)
+        sparse_tokens = build_sparse_vector(text_to_embed)
         sparse_indices = list(sparse_tokens.keys())
         sparse_values = list(sparse_tokens.values())
 
         payload = element.model_dump(mode="json")
-        point_id = abs(hash(element.element_id)) % (2**63 - 1)
+        point_id = generate_point_id(element.doc_id, element.page_number, element.bbox)
 
         self.qdrant_client.upsert(
             collection_name=self.collection_name,

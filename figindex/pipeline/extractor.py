@@ -135,6 +135,7 @@ class MultimodalExtractor:
                     if model_name != self.primary_model:
                         print(f"  [Active Model] Promoted responsive model '{model_name}' for faster throughput.")
                         self.primary_model = model_name
+                    self.last_used_model = model_name
                     return resp.text.strip()
                 except Exception as e:
                     err_str = str(e)
@@ -230,6 +231,7 @@ class MultimodalExtractor:
         if img_hash in self.cache:
             parsed = self.cache[img_hash]
             is_schema_valid = True
+            used_vision_model = "cache"
             print(f"    [Cache Hit] Using cached AI analysis for {crop_path.name}")
         else:
             img = Image.open(str(crop_path))
@@ -241,6 +243,7 @@ class MultimodalExtractor:
             )
 
             raw_text = self._call_gemini_with_backoff(prompt, img)
+            used_vision_model = getattr(self, "last_used_model", None) or getattr(self, "primary_model", "gemini-2.5-flash")
 
             # Clean JSON fences if present
             cleaned_json = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.MULTILINE)
@@ -351,6 +354,7 @@ class MultimodalExtractor:
                 "broker": source_org,
                 "industry": doc_metadata.get("industry"),
                 "analyst": doc_metadata.get("analyst"),
+                "vision_model": used_vision_model,
             }
         else:
             extra_metadata = {
@@ -359,6 +363,7 @@ class MultimodalExtractor:
                 "ticker": None,
                 "broker": None,
                 "analyst": None,
+                "vision_model": used_vision_model,
             }
 
         # BBox normalization

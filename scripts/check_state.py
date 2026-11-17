@@ -219,6 +219,16 @@ def check_a1_git_scope(
                 f"예상 밖 변경: {', '.join(sorted(list(unexpected))[:5])}"
             )
 
+    # 3. 코드 파일(.py/.ts) 변경 시 PROJECT_STATUS_FOR_AI.md 포함 검사
+    code_extensions = (".py", ".ts", ".tsx", ".js")
+    has_code_changed = any(f.endswith(code_extensions) for f in norm_changed)
+    status_doc_path = "PROJECT_STATUS_FOR_AI.md"
+    if has_code_changed and status_doc_path not in norm_changed:
+        res.warn(
+            "코드 파일(.py/.ts)이 변경되었으나 PROJECT_STATUS_FOR_AI.md가 변경 목록에 없습니다.",
+            detail="코드 변경 시 PROJECT_STATUS_FOR_AI.md 업데이트 필요"
+        )
+
     if res.status not in ("FAIL", "WARN"):
         res.pass_(f"브랜치: {branch}, 변경 파일: {len(norm_changed)}개")
 

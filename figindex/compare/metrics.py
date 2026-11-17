@@ -45,6 +45,10 @@ EXCLUDE_KEYWORDS: List[str] = [
     "재무상태표",
     "포괄손익계산서",
     "현금흐름표",
+    "변동내역",
+    "투자등급",
+    "투자의견비율",
+    "괴리율",
 ]
 
 # 동점 시 행 라벨 겹침 판정용 핵심 재무 항목
@@ -57,4 +61,26 @@ FINANCIAL_INDICATORS: List[str] = [
     "지배주주순이익",
     "EBITDA",
     "EPS",
+]
+
+# TARGET_PRICE 표 행/열 필수 라벨 (하나라도 포함되어야 유효)
+TARGET_PRICE_REQUIRED_LABELS: List[str] = [
+    "목표주가",
+    "적정주가",
+    "적정가치",
+    "적용",
+    "Target",
+]
+
+# TARGET_PRICE 탈락 캡션 키워드
+TARGET_PRICE_DISQUALIFY_CAPTION: List[str] = [
+    "forecast",
+    "earning",
+]
+
+# TARGET_PRICE 최우선(1순위) 캡션 키워드
+TARGET_PRICE_PRIORITY_KEYWORDS: List[str] = [
+    "산출",
+    "산정",
+    "적정주가",
 ]

@@ -316,6 +316,10 @@ def collect_document_stats(points: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
         if not entry["doc_type"]:
             entry["doc_type"] = payload.get("doc_type") or ""
 
+        if not entry.get("target"):
+            em = payload.get("extra_metadata") or {}
+            entry["target"] = (em.get("target") or em.get("company") or payload.get("target") or payload.get("company") or "")
+
         # entities 수집
         raw_ents = payload.get("entities")
         if isinstance(raw_ents, list):
