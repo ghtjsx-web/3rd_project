@@ -2,10 +2,10 @@
 
 # FigIndex 프로젝트 종합 현황서 (AI 분석·인수인계용)
 
-- **작성 시각**: 2026-11-16 10:22 (KST)
-- **현재 브랜치**: `refactor/schema-unify` (기준 커밋: `b531816`)
+- **작성 시각**: 2026-11-17 10:40 (KST)
+- **현재 브랜치**: `ryu` (기준 커밋: `b531816`)
 - **저장소 루트**: `c:\workAi\workProject\3차플젝`
-- **검사기 상태**: `check_state.py --full` PASS=10, WARN=1, FAIL=0 (엄격 금지 이름 0건, 단위 테스트 58건 전원 통과)
+- **검사기 상태**: `check_state.py --quick` PASS=7, WARN=0, CHANGED=0, FAIL=0, SKIP=1 (엄격 금지 이름 0건, A3 상태 리터럴 41건 유지)
 
 ---
 
@@ -59,6 +59,7 @@
 | **`figindex_elements_v2` (새 컬렉션)** | **465건** | **실서비스 조회 및 색인** | **백엔드/프론트엔드/파이프라인 단일 기준**, `ElementSearchPayload` 적용 (문서 113개, 승인 386건, 검수 대기 79건) |
 | **`figindex_elements` (옛 컬렉션)** | **525건** | 읽기 전용 (보존) | v1 스냅샷 및 롤백 대비용 보존 데이터 |
 | **크롭 이미지 (`figindex/data/crops/`)** | 578개 | 정상 보존 | 서빙 경로 `/static/crops/{filename}` 지원 |
+| **비교쌍 데이터 (`compare_pairs.json`)** | 1개 종목 (2건) | 생성 완료 | Qdrant `extra_metadata.company` 기준 2건 이상 종목(코스맥스 2건, 동일날짜) |
 | **원본 PDF (`figindex/data/pdfs/`)** | 118건 | 정상 보존 | 색인 완료 113건 + 미색인 5건 (원문 404 누락 0건) |
 | **엔티티 사전 (`figindex/data/entity_dictionary.csv`)** | 1건+헤더 | 기본 탑재 | SK하이닉스 및 주요 기업 티커 매핑 지원 |
 
@@ -109,6 +110,36 @@
     - **루트 app/ 참조 조사**: `scripts/generate_sample_pdf.py`의 참조 확인으로 보존 처리.
     - **시험 컬렉션 검증 통과**: `figindex_elements_4b_test` 생성 후 1건 색인(2개 도표) ➔ `ElementSearchPayload.model_validate()` PASS, bbox 0~1 `[x0, y0, x1, y1]` PASS, `doc_id` 일치 PASS 확인 후 컬렉션 안전 삭제 완료.
     - **정합성 검사 통과**: `check_state.py --full` PASS=10, WARN=1, FAIL=0 및 파이프라인 pytest 58건 전원 통과.
+22. **동일 종목 리포트 비교쌍 생성 스크립트 작성 및 compare_pairs.json 생성**:
+    - `scripts/make_compare_pairs.py` 개편: Qdrant 전체 문서의 `extra_metadata.company` 기준으로 묶어 2개 이상 문서가 있는 종목만 그룹화.
+    - company 고유값 목록(총 114개) 출력 및 표기 유사 이름(특수문자/대소문자/유사도) 자동 탐지 경고 지원.
+    - 그룹마다 문서 목록(`doc_name`, `source_org`, `publish_date`)과 '모두 같은 날짜인지 여부(`same_publish_date`)'를 포함하여 `data/compare_pairs.json`에 저장 완료.
+23. **문서별 추출 결과 정합성 검사 스크립트 작성 (`scripts/check_extraction.py`)**:
+    - Qdrant 컬렉션에 저장된 문서별 도표 수, TABLE 수, `source_org`, `publish_date`, `entities`(종목명)를 표로 출력하는 도구 구현.
+    - (1) `source_org`가 파일명의 증권사와 다른 경우, (2) 파일명의 종목명이 `entities`에 누락된 경우, (3) `TABLE` 수가 0개인 경우를 자동 검출하여 행에 `⚠` 표시 및 하단에 원인 상세 요약 출력.
+    - 한글 폭(East Asian Width) 자동 보정으로 터미널 표 정렬 지원 및 `ElementType.TABLE` Enum 사용 준수.
+24. **파일명 기반 메타데이터 파싱 및 우선순위 강화 (`orchestrator.py`)**:
+    - `parse_rpt_filename()` 함수를 구현하여 `RPT_YYYYMMDD_종목_증권사.pdf` 파일명에서 `publish_date`, `source_org`, `company`를 직접 파싱.
+    - 메타데이터 추출(`extract_document_metadata`) 시 파일명 파싱 값을 표지/LLM 추출 값보다 최우선 적용.
+    - `company`를 `extra_metadata.company`에 명시적으로 저장하도록 보장.
+25. **기존 Qdrant 포인트 메타데이터 일괄 보정 및 115개 전수 검사기 고도화**:
+    - `scripts/fix_metadata_from_filename.py`: Qdrant의 기존 RPT 포인트 중 메타데이터 오인식(증권사/날짜 오염 등)이 발생한 10개 문서(62개 포인트)에 대해 파일명 파싱 값을 `set_payload`로 일괄 보정 반영 완료.
+    - `scripts/check_extraction.py`: Qdrant scroll을 끝까지 페이징하여 저장된 115개 전체 문서를 전수 검사하도록 개선. `publish_date` 불일치, `entities` 종목명 누락, `source_org` 불일치, `TABLE 0개`를 자동 감지하고 터미널 표 및 하단 주의 목록으로 출력 지원.
+26. **미색인 PDF 문서 순차 자동 색인 스크립트 구현 (`scripts/ingest_missing.py`)**:
+    - Qdrant 컬렉션의 기색인 `doc_name` 목록과 `data/pdfs/` 파일을 비교하여 미색인 대상(26건)만 선별 색인하는 파이프라인 러너 구현.
+    - `--dry-run` 사전 진단 모드 지원, Gemini 무료 티어(15 RPM) 한도 준수를 위한 호출 간 딜레이(`--delay 4.0`) 적용.
+    - 429(RateLimit/RESOURCE_EXHAUSTED) 발생 시 지수 백오프(최대 5회) 자동 재시도 및 파일별 성공·실패·소요시간·도표 수 로깅 완비.
+27. **API 호출 단위 Rate Limiter 및 원자적 색인 파이프라인 고도화 (`ingest_missing.py`, `orchestrator.py`, `extractor.py`)**:
+    - **공용 Rate Limiter (`extractor.py`)**: 문서 단위 슬립 대신 모든 Gemini API 호출이 거치는 공용 `GeminiRateLimiter(max_rpm=14.0)` 싱글톤을 구현하여 분당 최대 14회(호출 간 최소 4.29초) 강제 보장.
+    - **문서 단위 원자적(Atomic) 색인 (`orchestrator.py`)**: 도표 추출 루프 도중 중간 실패 시 Qdrant 오염을 방지하기 위해 `pending_payloads`에 축적한 뒤, 모든 도표 처리가 정상 완료된 시점에만 일괄 `index_element_to_qdrant` 수행. 중간 실패 시 저장하지 않고 실패 목록에 기록.
+    - **미확인 증권사 유연 처리 (`orchestrator.py`)**: `parse_rpt_filename()`에서 파일명의 증권사 자리가 '미확인'인 경우 `source_org`를 확정하지 않고 `None`을 반환하여 표지 텍스트 검색 및 LLM 추출값에 위임.
+    - **필터링 및 정밀 진단 모드 (`scripts/ingest_missing.py`)**: `--only` 옵션(예: `--only RPT_`)을 추가하여 특정 파일명 패턴만 선별 색인 가능하도록 개선하고, `--dry-run` 예상 시간을 '도표 수 × 호출 간격(4.29초)' 기준으로 정밀 재계산.
+    - **오케스트레이터 초기화 정합성 보정 (`scripts/ingest_missing.py`)**: `ExtractionPipelineOrchestrator.__init__()` 시그니처에 맞춰 인자 전달을 제거하고 환경변수(`QDRANT_COLLECTION`, `QDRANT_URL`) 기반 주입 방식으로 수정.
+28. **동일 종목 리포트 도표 지표 비교(Compare) 및 행 정렬 API 구현**:
+    - **지표 및 매칭 정의 (`figindex/compare/metrics.py`)**: `MetricType` (`TARGET_PRICE`, `ANNUAL_ESTIMATE`, `QUARTERLY_RESULT`) 정의 및 캡션 키워드, 매칭 제외 키워드(`COMPANY DATA`, `재무상태표` 등), 재무 행 지표 목록 수립.
+    - **도표 매칭 및 나란히 정렬 엔진 (`figindex/compare/matcher.py`, `service.py`)**: 캡션 키워드 점수 및 재무 행 겹침 기반 1순위·2순위 후보 선별(미매칭 시 `not_found`), 행 라벨 정규화(공백 제거, `(P)/(E)/(F)` 통일)를 통한 나란히 정렬 및 문서별 단위 보존 구현.
+    - **FastAPI 비교 엔드포인트 (`figindex/backend/app/main.py`)**: `GET /compare?company=...&metric=...` 구현 (응답에 매칭 결과 메타데이터, 점수, `table_data`, 정렬된 행 리스트 반환).
+    - **매트릭스 일괄 점검 스크립트 (`scripts/run_compare_matrix.py`)**: 10개 종목 그룹 × 3개 지표(총 90건 점검) 일괄 수행, 매칭 성공 56건(62.2%), 콘솔 표 출력 및 `data/compare_matrix.json` 저장 완료.
 
 ---
 

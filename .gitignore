@@ -73,3 +73,7 @@ Thumbs.db
 
 # Check state reports
 .check_reports/
+
+figindex/data.zip
+data/pdfs/
+figindex/data/pdfs/

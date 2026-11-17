@@ -4,6 +4,7 @@ import json
 import time
 import random
 import hashlib
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -25,6 +26,28 @@ try:
     from evaluator import ConfidenceEvaluator
 except ImportError:
     from pipeline.evaluator import ConfidenceEvaluator
+
+
+class GeminiRateLimiter:
+    """Gemini API 호출 속도 제한기 (공용 싱글톤: 분당 최대 14회, 최소 호출 간격 약 4.29초)."""
+
+    def __init__(self, max_rpm: float = 14.0):
+        self.min_interval = 60.0 / max_rpm
+        self.last_call_time = 0.0
+        self._lock = threading.Lock()
+
+    def wait(self):
+        with self._lock:
+            now = time.time()
+            elapsed = now - self.last_call_time
+            if elapsed < self.min_interval:
+                sleep_duration = self.min_interval - elapsed
+                time.sleep(sleep_duration)
+            self.last_call_time = time.time()
+
+
+# 공용 싱글톤 rate limiter (모든 Gemini API 호출이 공유)
+SHARED_GEMINI_RATE_LIMITER = GeminiRateLimiter(max_rpm=14.0)
 
 
 class MultimodalExtractor:
@@ -78,11 +101,9 @@ class MultimodalExtractor:
             return img_path.name
 
     def _wait_for_rate_limit(self):
-        """Enforce rate limiting delay between consecutive Gemini API requests."""
-        elapsed = time.time() - self.last_call_time
-        if elapsed < self.rate_limit_delay:
-            sleep_duration = self.rate_limit_delay - elapsed
-            time.sleep(sleep_duration)
+        """공용 싱글톤 rate limiter를 호출하여 분당 최대 14회(호출 간 ~4.29초) 한도를 엄격 준수합니다."""
+        SHARED_GEMINI_RATE_LIMITER.wait()
+        self.last_call_time = time.time()
 
     def _call_gemini_with_backoff(self, prompt: str, img: Image.Image) -> str:
         """

@@ -703,3 +703,66 @@ def get_element_by_id(element_id: str):
         return ElementSearchPayload(**results[0].payload)
 
     raise HTTPException(status_code=404, detail=f"도표 요소 '{element_id}'를 찾을 수 없습니다.")
+
+
+# =====================================================================
+# Document Table Comparison API
+# =====================================================================
+try:
+    from compare.metrics import MetricType
+    from compare.service import compare_company_metric
+except ImportError:
+    try:
+        from figindex.compare.metrics import MetricType
+        from figindex.compare.service import compare_company_metric
+    except ImportError:
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+        from compare.metrics import MetricType
+        from compare.service import compare_company_metric
+
+
+class MatchedDocComparison(BaseModel):
+    doc_name: str
+    source_org: Optional[str] = None
+    publish_date: Optional[str] = None
+    matched: bool
+    element_id: Optional[str] = None
+    page_number: Optional[int] = None
+    caption: Optional[str] = None
+    match_score: float = 0.0
+    second_candidate_element_id: Optional[str] = None
+    table_data: Optional[TableData] = None
+    match_status: str = "not_found"
+
+
+class AlignedComparisonRow(BaseModel):
+    row_label: str
+    raw_labels: Dict[str, str] = {}
+    values: Dict[str, Dict[str, Any]] = {}
+
+
+class CompareApiResponse(BaseModel):
+    company: str
+    metric: str
+    documents: List[MatchedDocComparison]
+    aligned_rows: List[AlignedComparisonRow]
+
+
+@app.get("/compare", response_model=CompareApiResponse)
+@app.get("/api/compare", response_model=CompareApiResponse)
+def get_compare_endpoint(
+    company: str = Query(..., description="비교 대상 기업/종목명 (예: 카카오, 삼성전자)"),
+    metric: MetricType = Query(..., description="비교 대상 지표 (TARGET_PRICE, ANNUAL_ESTIMATE, QUARTERLY_RESULT)"),
+):
+    """
+    동일 종목 리포트 그룹 내에서 같은 지표의 TABLE을 매칭하고 행을 나란히 정렬하여 반환합니다.
+    """
+    res = compare_company_metric(
+        company=company,
+        metric=metric,
+        qdrant_url=QDRANT_URL,
+        collection_name=QDRANT_COLLECTION,
+    )
+    return res
+
