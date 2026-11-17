@@ -6,8 +6,8 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 4a/4b 전면 완료 후 sparse 토큰 결정론화(crc32) 및 v2 교체 완료, 중복 정리 및 지표 비교 매트릭스 고도화 단계
-2. **방금 한 일과 결과**: Docker 환경 A8 단위 테스트 실패 2건(extractor primary_model 접근, parse_rpt_filename company 키) 원인 규명 및 코드 수정, A8 단위 테스트 156건 100% 통과(FAIL 0 달성)
+1. **현재 단계**: 도표 비교(Compare) 엔진 고도화 및 추출 숫자 정확도(BBox 원문 텍스트 대조) 전수 검증 단계
+2. **방금 한 일과 결과**: 비교 수치 정답셋 1차본 28건 확정 완료(동일 날짜 5개 그룹 2026E 매출액·영업이익 26건 편차 5% 이내+크롭 육안 대조, 카카오 지배주주순익 2건 증권사 전망차 29% 시연 후보 반영), data/eval/compare_numbers_check.csv 갱신
 3. **다음 할 일**: KEYWORD_MISS 13건 검토(재색인으로 CAP_LIMIT에서 이동한 건 포함)
 4. **막힌 것**: 없음
 5. **팀장 결정 대기**: `MetricType` Enum의 `schemas.py` 이전 승인 대기
@@ -19,20 +19,20 @@
 <!-- AUTO:START -->
 | 항목 | 측정값 | 측정 시각 |
 | :--- | :--- | :--- |
-| **Git 브랜치** | `ryu` | 2026-11-17 15:49:11 KST |
-| **Git 최신 커밋** | `280072f - feat: 파일명 우선 메타데이터, 미색인 일괄 색인, 비교 엔진 1차 (/compare, 매트릭스 점검)` | 2026-11-17 15:49:11 KST |
-| **Git 미커밋 변경 파일** | `19개 파일` | 2026-11-17 15:49:11 KST |
-| **Qdrant 컬렉션 (`v2`) 포인트** | `618` (승인: `532`, 검수대기: `86`) | 2026-11-17 15:49:11 KST |
-| **Qdrant 색인 고유 문서** | `136개 문서` | 2026-11-17 15:49:11 KST |
-| **원문 PDF 총계** | `141개 PDF` | 2026-11-17 15:49:12 KST |
-| **미색인 원문 PDF 목록** | 5건: RPT_20261105_KB금융_미확인.pdf, RPT_20261105_우리금융지주_미확인.pdf, 논문_20260825_드론자력탐사오차보정_Geophysics.pdf, 보고서20261111휴머노이드로봇RD투자전략개방형_한국과학기술기획평가원.pdf, 보도자료_20260702_OECD한국경제보고서_재정경제부.pdf | 2026-11-17 15:49:12 KST |
-| **동일 종목 비교 그룹** | `10개 그룹` (`compare_pairs.json`) | 2026-11-17 15:49:12 KST |
-| **도표 비교 매칭 성공** | 총 69건 (TARGET_PRICE: 15건, ANNUAL_ESTIMATE: 28건, QUARTERLY_RESULT: 26건) | 2026-11-17 15:49:12 KST |
-| **도표 비교 미매칭 원인** | 총 21건 (ABSENT: 8건, KEYWORD_MISS: 13건) | 2026-11-17 15:49:12 KST |
-| **상태 검사기 (`check_state`)** | `PASS=6  WARN=2  CHANGED=0  FAIL=0  SKIP=0` | 2026-11-17 15:49:12 KST |
-| └ **검사 경고(WARN) 항목** | A1. Git 변경 범위, A6. 모델 중복 정의 | 2026-11-17 15:49:12 KST |
-| └ **검사 생략(SKIP) 항목** | 없음 | 2026-11-17 15:49:12 KST |
-| └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-17 15:49:12 KST |
+| **Git 브랜치** | `ryu` | 2026-11-17 17:14:31 KST |
+| **Git 최신 커밋** | `22123cb - fix: sparse·point id 결정론화(crc32/uuid5), v2 sparse 재계산, 중복 4건 정리, CAP_LIMIT 재색인, 종목 키 target 표준화` | 2026-11-17 17:14:31 KST |
+| **Git 미커밋 변경 파일** | `2개 파일` | 2026-11-17 17:14:31 KST |
+| **Qdrant 컬렉션 (`v2`) 포인트** | `618` (승인: `532`, 검수대기: `86`) | 2026-11-17 17:14:31 KST |
+| **Qdrant 색인 고유 문서** | `136개 문서` | 2026-11-17 17:14:31 KST |
+| **원문 PDF 총계** | `141개 PDF` | 2026-11-17 17:14:31 KST |
+| **미색인 원문 PDF 목록** | 5건: RPT_20261105_KB금융_미확인.pdf, RPT_20261105_우리금융지주_미확인.pdf, 논문_20260825_드론자력탐사오차보정_Geophysics.pdf, 보고서20261111휴머노이드로봇RD투자전략개방형_한국과학기술기획평가원.pdf, 보도자료_20260702_OECD한국경제보고서_재정경제부.pdf | 2026-11-17 17:14:31 KST |
+| **동일 종목 비교 그룹** | `10개 그룹` (`compare_pairs.json`) | 2026-11-17 17:14:31 KST |
+| **도표 비교 매칭 성공** | 총 69건 (TARGET_PRICE: 15건, ANNUAL_ESTIMATE: 28건, QUARTERLY_RESULT: 26건) | 2026-11-17 17:14:31 KST |
+| **도표 비교 미매칭 원인** | 총 21건 (ABSENT: 8건, KEYWORD_MISS: 13건) | 2026-11-17 17:14:31 KST |
+| **상태 검사기 (`check_state`)** | `PASS=7  WARN=1  CHANGED=0  FAIL=0  SKIP=0` | 2026-11-17 17:14:31 KST |
+| └ **검사 경고(WARN) 항목** | A6. 모델 중복 정의 | 2026-11-17 17:14:31 KST |
+| └ **검사 생략(SKIP) 항목** | 없음 | 2026-11-17 17:14:31 KST |
+| └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-17 17:14:31 KST |
 <!-- AUTO:END -->
 
 ---
@@ -41,11 +41,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **17:15** | 비교 수치 정답셋 1차본 28건 확정(26건 정답값 채움+비고 기재, 카카오 지배순익 2건 추가), 현황서 결정 기록 추가 | `compare_numbers_check.csv`, `compare_numbers_check.html`, `PROJECT_STATUS_FOR_AI.md` | `python scripts/check_state.py` | 정답셋 28건(일치율 100%), 카카오 전망차 29% 시연 후보 확정 | **PASS** |
+| **16:42** | 비교 매트릭스 표(69건) 숫자 정확도 검증 스크립트 작성 및 5개 그룹 2026E 검수 시트·HTML 생성 | `scripts/verify_compare_numbers.py`, `PROJECT_STATUS_FOR_AI.md` | `python scripts/verify_compare_numbers.py` | 69건 전체 평균 일치율 99.93%(6091/6092 일치), 90% 미만 0건, 검수 26건 전량 Y | **PASS** |
 | **15:40** | Docker A8 단위 테스트 2건 실패(extractor, parse_rpt_filename) 코드 수정 및 전량 통과 | `orchestrator.py`, `extractor.py`, `PROJECT_STATUS_FOR_AI.md` | `python scripts/check_state.py --quick` | 단위 테스트 156건 100% 통과 (PASS=6, FAIL=0) | **PASS** |
 | **15:35** | v2 sparse 벡터 실제 교체, 중복 4건 삭제 정리, 매트릭스 재실행 및 현황 갱신 | `rebuild_sparse_vectors.py`, `dedup_points.py`, `PROJECT_STATUS_FOR_AI.md` | `python scripts/run_compare_matrix.py` | 교체 622건(실패 0), 삭제 4건(잔여 618건), 매칭 69건(직전 61건 대비 +8) | **PASS** |
 | **15:20** | 결정론적 sparse 토큰(crc32) 및 uuid5 고정 point_id 전환, 재계산 스크립트 작성 및 dry-run | `shared/sparse.py`, `orchestrator.py`, `extractor.py`, `rebuild_sparse_vectors.py`, `test_sparse_and_point_id.py` | `pytest figindex/pipeline/test_sparse_and_point_id.py` | 622건 대상 dry-run 완료, 중복 6그룹 발견, pytest 2종 통과 | **PASS** |
-| **13:03** | TARGET_PRICE 내용 검증 해제, Forecast/earning 제외 및 산출 우선순위 유지, 가정 제외 유지 | `matcher.py`, `run_compare_matrix.py`, `PROJECT_STATUS_FOR_AI.md` | `python scripts/run_compare_matrix.py` | 매칭 61건 (TP 13, AE 25, QR 23), 미매칭 29건 | **PASS** |
-| **12:55** | TARGET_PRICE 내용 검증 및 우선순위, 가정 제외, 공통 최근 분기 실적 열 정렬 | `metrics.py`, `matcher.py`, `service.py`, `run_compare_matrix.py` | `python scripts/run_compare_matrix.py` | 매칭 56건 (TP 8, AE 25, QR 23), 미매칭 34건 | **PASS** |
 
 ---
 
@@ -70,6 +70,7 @@
 4. **결정론적 Sparse 토큰(crc32) 및 고정 Point ID 전환, v2 재계산 쓰기 예외 허용 (2026-11-17)**: `PYTHONHASHSEED`에 따라 달라지던 `hash()` 기반 sparse 토큰과 point ID를 각각 `zlib.crc32` 및 `uuid.uuid5` 기반으로 전환. 사전 Qdrant 스냅샷(`figindex_elements_v2-1851693946944154-2026-11-17-06-28-08-3.snapshot`) 생성 후 v2 컬렉션 622건 sparse 벡터 전량 교체 완료(실패 0건).
 5. **중복 포인트 4건 정리 허용 (2026-11-17, v2 쓰기 예외)**: (doc_name, page_number, caption)이 중복된 4개 그룹(그린광학 p.3, BGF리테일 p.2 2건, 롯데렌탈 p.2)에서 bbox 면적이 작은 포인트 4건 선별 삭제 완료(삭제 전 이력 보존: `data/migration/dedup_20261117.csv`).
 6. **종목 키 표준 extra_metadata.target 확정 및 31건 백필 허용 (2026-11-17, v2 쓰기 예외)**: 종목 키의 표준을 `extra_metadata.target`으로 확정. v2 컬렉션 618건 중 `target`이 비어있던 31건에 대해 `company` 값을 `target`에 채워 넣음(기존 company 보존). 스크립트 4종(`make_compare_pairs.py`, `service.py`, `check_extraction.py`, `fix_metadata_from_filename.py`)이 target을 우선 읽도록 수정.
+7. **비교 수치 정답셋 1차본 28건 확정 (2026-11-17)**: 5개 동일 날짜 그룹(카카오, KTnG, SK텔레콤, 삼양식품, 코스맥스)의 2026E 실적 추정치 26건(매출액, 영업이익) 및 카카오 지배주주순이익 2건(SK증권 407.3, 한화투자증권 527)에 대해 교차 증권사 편차 5% 이내 확인 및 크롭 육안 대조를 거쳐 정답값 확정(`data/eval/compare_numbers_check.csv`). 카카오 지배주주순이익 2건(편차 29%)은 시스템 오류가 아닌 증권사 간 추정치 차이로 시연 사례 후보로 분류.
 
 ---
 
