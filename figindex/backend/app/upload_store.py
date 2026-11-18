@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Sequence, Tuple
 
@@ -65,6 +66,88 @@ def _file_doc_hash(path: Path) -> str:
                 break
             doc_hash.update(content)
     return doc_hash.hexdigest()
+
+
+def register_existing_pdfs(db_path: str, pdfs_dir: str) -> tuple[int, int, int]:
+    """Register already-indexed PDFs so later uploads are recognized as duplicates.
+
+    Returns (scanned_count, registered_count, skipped_duplicate_count). Files are
+    read only; each new hash is stored as COMPLETED in one SQLite batch.
+    """
+    source_pdfs_dir = Path(pdfs_dir)
+    if not source_pdfs_dir.is_dir():
+        raise FileNotFoundError(f"PDF directory does not exist: {source_pdfs_dir}")
+
+    pdf_paths = sorted(
+        (
+            path
+            for path in source_pdfs_dir.iterdir()
+            if path.is_file() and path.suffix.lower() == ".pdf"
+        ),
+        key=lambda path: path.name.casefold(),
+    )
+    scanned_count = len(pdf_paths)
+    if scanned_count == 0:
+        return 0, 0, 0
+
+    hashed_pdfs = [(path, _file_doc_hash(path)) for path in pdf_paths]
+    database_path = Path(db_path)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+
+    connection = sqlite3.connect(str(database_path), timeout=30)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(_CREATE_SCHEMA)
+        connection.execute("BEGIN IMMEDIATE")
+
+        existing_hashes = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT doc_hash
+                FROM documents
+                WHERE doc_status IN (?, ?, ?)
+                """,
+                (
+                    DocStatus.UPLOADED.value,
+                    DocStatus.PROCESSING.value,
+                    DocStatus.COMPLETED.value,
+                ),
+            )
+        }
+
+        new_pdfs: list[tuple[Path, str]] = []
+        skipped_duplicate_count = 0
+        for pdf_path, doc_hash in hashed_pdfs:
+            if doc_hash in existing_hashes:
+                skipped_duplicate_count += 1
+                continue
+            existing_hashes.add(doc_hash)
+            new_pdfs.append((pdf_path, doc_hash))
+
+        if not new_pdfs:
+            connection.commit()
+            return scanned_count, 0, skipped_duplicate_count
+
+        batch = Batch(batch_id=str(uuid.uuid4()), doc_count=len(new_pdfs))
+        _insert_batch(connection, batch)
+        for pdf_path, doc_hash in new_pdfs:
+            document = Document(
+                doc_id=str(uuid.uuid4()),
+                batch_id=batch.batch_id,
+                doc_hash=doc_hash,
+                doc_name=pdf_path.name,
+                doc_status=DocStatus.COMPLETED,
+            )
+            _insert_document(connection, document)
+
+        connection.commit()
+        return scanned_count, len(new_pdfs), skipped_duplicate_count
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def _copy_without_overwrite(staged_path: Path, destination: Path) -> bool:
