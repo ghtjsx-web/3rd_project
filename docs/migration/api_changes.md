@@ -55,3 +55,10 @@
 - `GET /api/elements/{element_id}`: 단일 응답 모델 `ElementSearchPayload`
 - `POST /api/review/{element_id}`: 단일 응답 모델 `ElementSearchPayload`, 요청 모델 `ReviewActionRequest`
 
+## 6. PDF 묶음 업로드
+- POST /api/batches: multipart/form-data의 files 항목으로 PDF 여러 개를 받습니다.
+- 응답은 List[Document]이며 각 문서의 batch_id, doc_id, doc_hash, doc_name, doc_status를 반환합니다.
+- 파일과 Batch·Document 정보는 data/pdfs/와 data/metadata.sqlite3에 저장합니다.
+- 같은 doc_hash가 이미 등록되어 있으면 doc_status=DUPLICATE, doc_error에 기존 doc_id를 반환합니다.
+- 기존 파일명과 다른 내용이 충돌하면 파일을 덮지 않고 doc_status=FAILED로 기록합니다.
+- 이 API는 업로드와 중복 판정만 하며 파이프라인을 실행하지 않습니다.

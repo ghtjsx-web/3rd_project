@@ -4,11 +4,14 @@ import hashlib
 import time
 import threading
 import traceback
+import tempfile
+import unicodedata
+import uuid
 from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, Query, Header, Depends, Request
+from fastapi import FastAPI, Query, Header, Depends, Request, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import quote
 from fastapi.responses import FileResponse, JSONResponse
@@ -23,6 +26,9 @@ load_dotenv()
 from shared.schemas import (
     ElementType,
     ReviewStatus,
+    Batch,
+    Document,
+    DocStatus,
     ElementSearchPayload,
     TableData,
     ComparisonResult,
@@ -30,6 +36,7 @@ from shared.schemas import (
 )
 from shared.compare import available_metrics, build_comparison
 from shared.normalize import METRIC_ALIASES
+from app.upload_store import persist_batch
 
 
 @asynccontextmanager
@@ -79,6 +86,90 @@ CROPS_DIR = os.getenv("CROPS_DIR", os.path.join(DATA_DIR, "crops"))
 PDFS_DIR = os.getenv("PDFS_DIR", os.path.join(DATA_DIR, "pdfs"))
 QDRANT_LOCAL_PATH = os.getenv("QDRANT_LOCAL_PATH", os.path.join(DATA_DIR, "qdrant_local"))
 CACHE_DIR = os.getenv("CACHE_DIR", os.path.join(DATA_DIR, "cache"))
+
+UPLOAD_DB_PATH = os.path.join(DATA_DIR, "metadata.sqlite3")
+
+
+@app.post(
+    "/api/batches",
+    response_model=List[Document],
+    status_code=201,
+    summary="PDF 묶음 등록",
+    description="PDF 여러 개를 등록합니다. 파일 내용이 같은 문서는 DUPLICATE로 기록하며, 파이프라인은 실행하지 않습니다.",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "examples": {
+                        "two_pdfs": {
+                            "summary": "PDF 두 개 등록",
+                            "description": "Swagger의 files 항목에 PDF 파일 두 개를 첨부합니다.",
+                            "value": {"files": ["report_a.pdf", "report_b.pdf"]},
+                        }
+                    }
+                }
+            }
+        }
+    },
+)
+async def create_batch(files: List[UploadFile] = File(..., description="한 번에 등록할 PDF 파일 목록")):
+    if not files:
+        raise HTTPException(status_code=400, detail="PDF 파일을 하나 이상 선택해 주세요.")
+
+    os.makedirs(PDFS_DIR, exist_ok=True)
+    batch_id = str(uuid.uuid4())
+    batch = Batch(batch_id=batch_id, doc_count=len(files))
+    temporary_paths: List[str] = []
+    staged_documents: List[Tuple[Document, str]] = []
+
+    try:
+        for upload in files:
+            raw_doc_name = upload.filename or ""
+            doc_name = unicodedata.normalize(
+                "NFC", os.path.basename(raw_doc_name.replace(chr(92), "/"))
+            ).strip()
+            if not doc_name or not doc_name.lower().endswith(".pdf"):
+                raise HTTPException(status_code=400, detail="PDF 파일만 등록할 수 있습니다.")
+
+            descriptor, staged_path = tempfile.mkstemp(
+                prefix=".figindex-upload-", suffix=".tmp", dir=PDFS_DIR
+            )
+            temporary_paths.append(staged_path)
+            doc_hash = hashlib.sha256()
+            file_header = bytearray()
+            with os.fdopen(descriptor, "wb") as staged_file:
+                while True:
+                    content = await upload.read(1024 * 1024)
+                    if not content:
+                        break
+                    if len(file_header) < 1024:
+                        file_header.extend(content[: 1024 - len(file_header)])
+                    staged_file.write(content)
+                    doc_hash.update(content)
+
+            if b"%PDF-" not in file_header:
+                raise HTTPException(
+                    status_code=400,
+                    detail="'" + doc_name + "' 파일의 PDF 내용을 확인할 수 없습니다.",
+                )
+
+            document = Document(
+                doc_id=str(uuid.uuid4()),
+                batch_id=batch_id,
+                doc_hash=doc_hash.hexdigest(),
+                doc_name=doc_name,
+                doc_status=DocStatus.UPLOADED,
+            )
+            staged_documents.append((document, staged_path))
+
+        return persist_batch(UPLOAD_DB_PATH, PDFS_DIR, batch, staged_documents)
+    finally:
+        for staged_path in temporary_paths:
+            try:
+                os.remove(staged_path)
+            except FileNotFoundError:
+                pass
+
 
 # CORS Domains
 raw_cors = os.getenv(

@@ -59,6 +59,35 @@ export interface FilterOptions {
   element_types: string[];
 }
 
+export const DOC_STATUS = {
+  UPLOADED: "UPLOADED",
+  PROCESSING: "PROCESSING",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+  DUPLICATE: "DUPLICATE",
+} as const;
+
+export type DocStatus = (typeof DOC_STATUS)[keyof typeof DOC_STATUS];
+
+export interface Document {
+  doc_id: string;
+  batch_id?: string | null;
+  doc_hash: string;
+  doc_name: string;
+  doc_title?: string | null;
+  doc_type?: string | null;
+  domain?: string | null;
+  source_org?: string | null;
+  authors: string[];
+  publish_date?: string | null;
+  page_count?: number | null;
+  collection_id?: string | null;
+  doc_status: DocStatus;
+  doc_error?: string | null;
+  created_at: string;
+  extra_metadata: Record<string, unknown>;
+}
+
 
 // ── 문서 간 비교 (/api/compare) ─────────────────────────────
 // 백엔드 shared/schemas.py의 PeriodBasis·ComparisonCell·ComparisonResult와 같은 모양이다.
