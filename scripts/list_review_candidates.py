@@ -10,7 +10,8 @@ Qdrant의 요소 전체를 읽어, 틀렸을 가능성이 높은 요소만 골�
 - 검수대기: review_status가 PENDING_REVIEW (확신도가 CONFIDENCE_THRESHOLD 미만)
 - 아주작음: 페이지 넓이 대비 bbox 넓이가 SMALL_AREA 미만 (로고·아이콘 가능성)
 - 머리말꼬리말: bbox가 페이지 위·아래 띠(EDGE_BAND) 안에만 있음
-- 유형불일치: TABLE인데 table_data가 비었거나, TABLE이 아닌데 table_data가 있음
+- 표데이터없음: TABLE인데 table_data가 비어 있음 (유형은 맞고 숫자를 못 읽은 경우가 많음)
+- 유형불일치: TABLE이 아닌데 table_data가 있음
 - 첫페이지그림: 1페이지의 TABLE이 아닌 요소 (표지 장식 가능성)
 
 정렬: 사유가 많은 순 → 확신도가 낮은 순.
@@ -41,7 +42,7 @@ SMALL_AREA = 0.01   # 페이지의 1% 미만
 EDGE_BAND = 0.10    # 위·아래 10%
 
 CSV_COLUMNS = [
-    "번호", "파일명", "페이지 번호", "요소 ID", "현재 유형", "의심 사유", "확신도",
+    "번호", "파일명", "페이지 번호", "요소 ID", "캡션", "현재 유형", "의심 사유", "확신도",
     "상세 화면", "판정 (맞음/틀림)", "맞는 유형", "이유", "작성자",
 ]
 
@@ -61,7 +62,7 @@ def suspicion_reasons(payload: Dict[str, Any]) -> List[str]:
     if bbox[3] <= EDGE_BAND or bbox[1] >= 1.0 - EDGE_BAND:
         reasons.append("머리말꼬리말")
     if element_type == ElementType.TABLE.value and not has_rows:
-        reasons.append("유형불일치")
+        reasons.append("표데이터없음")
     elif element_type != ElementType.TABLE.value and has_rows:
         reasons.append("유형불일치")
     if payload.get("page_number") == 1 and element_type != ElementType.TABLE.value:
@@ -106,6 +107,7 @@ def build_rows(payloads: List[Dict[str, Any]], frontend_url: str, limit: int) ->
             "파일명": p.get("doc_name", ""),
             "페이지 번호": p.get("page_number", ""),
             "요소 ID": p.get("element_id", ""),
+            "캡션": p.get("caption", ""),
             "현재 유형": p.get("element_type", ""),
             "의심 사유": ", ".join(reasons),
             "확신도": round(float(p.get("confidence_score", 0.0)), 2),

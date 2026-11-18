@@ -26,7 +26,7 @@ def test_each_rule():
     assert "검수대기" in suspicion_reasons(_payload(review_status=ReviewStatus.PENDING_REVIEW.value))
     assert "아주작음" in suspicion_reasons(_payload(bbox=[0.1, 0.4, 0.15, 0.45]))
     assert "머리말꼬리말" in suspicion_reasons(_payload(bbox=[0.1, 0.92, 0.9, 0.98]))
-    assert "유형불일치" in suspicion_reasons(_payload(table_data=None))
+    assert "표데이터없음" in suspicion_reasons(_payload(table_data=None))
     assert "유형불일치" in suspicion_reasons(_payload(element_type=ElementType.CHART.value))
     assert "첫페이지그림" in suspicion_reasons(
         _payload(page_number=1, element_type=ElementType.DIAGRAM.value, table_data=None))
