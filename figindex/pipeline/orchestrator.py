@@ -28,7 +28,7 @@ from shared.schemas import (
     DocStatus,
     PIPELINE_VERSION,
 )
-from shared.sparse import build_sparse_vector
+from shared.sparse import build_sparse_vector, generate_point_id
 
 try:
     from cropper import PDFCropper
@@ -283,8 +283,56 @@ def parse_filename(doc_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def parse_rpt_filename(doc_name: str) -> Optional[Dict[str, Any]]:
+    """
+    RPT_YYYYMMDD_종목_증권사.pdf 파일명에서 publish_date, source_org, company를 파싱합니다.
+    파일명 값이 메타데이터 추출의 최우선 기준이 됩니다.
+    """
+    normalized = unicodedata.normalize("NFC", Path(doc_name).name).strip()
+    stem = re.sub(r"\.pdf$", "", normalized, flags=re.IGNORECASE).strip()
+    if not stem.upper().startswith("RPT_"):
+        return None
+
+    remainder = stem[4:]
+    parts = remainder.split("_")
+    # 끝에 중복 번호(_2, _3 등)가 붙은 경우 제거
+    if len(parts) >= 4 and re.fullmatch(r"\d+", parts[-1].strip()):
+        parts = parts[:-1]
+    if len(parts) < 3:
+        return None
+
+    date_str = parts[0].strip()
+    source_raw = parts[-1].strip()
+    company = "_".join(p.strip() for p in parts[1:-1]).strip()
+
+    if not company or not source_raw:
+        return None
+
+    parsed_date = _parse_date_digits(date_str)
+    if not parsed_date:
+        return None
+
+    # 증권사 자리가 '미확인'이면 파일명에서 가져오지 않고 None으로 두어 LLM/표지 추출값을 사용하도록 함
+    if source_raw in ("미확인", "UNKNOWN", "unknown", ""):
+        source_org = None
+    else:
+        source_org = normalize_broker_name(source_raw)
+
+    return {
+        "publish_date": parsed_date,
+        "source_org": source_org,
+        "target": company,
+        "doc_type": "REPORT",
+    }
+
+
 def parse_new_filename(doc_name: str) -> Optional[Dict[str, Any]]:
     """파일명을 해석해 doc_type, publish_date, target, source_org를 반환합니다."""
+    # RPT 전용 형식 우선 파싱
+    rpt_res = parse_rpt_filename(doc_name)
+    if rpt_res:
+        return rpt_res
+
     res = parse_filename(doc_name)
     if not res:
         return None
@@ -411,10 +459,27 @@ class ExtractionPipelineOrchestrator:
         parsed_fn = parse_new_filename(doc_name)
 
         if parsed_fn:
+            # 파일명 파싱 값을 표지/LLM 추출 값보다 최우선 적용
             target = parsed_fn["target"]
-            source_org = parsed_fn["source_org"]
+            source_org = parsed_fn.get("source_org")
             pub_date = parsed_fn["publish_date"]
             doc_type = parsed_fn["doc_type"]
+            company = parsed_fn.get("company") or (target if doc_type == "REPORT" else None)
+
+            # 파일명 증권사 자리가 미확인(None)인 경우 표지에서 증권사 매칭 시도
+            if not source_org and doc_type == "REPORT":
+                broker_candidates = [
+                    "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
+                    "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
+                    "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
+                    "SK증권", "유진투자증권", "DB증권", "DB금융투자", "iM증권", "하이투자증권",
+                    "다올투자증권", "LS증권", "상상인증권",
+                ]
+                for b in broker_candidates:
+                    short_b = b.replace("투자증권", "").replace("금융투자", "").replace("증권", "")
+                    if b in cover_text or (len(short_b) >= 2 and short_b in cover_text):
+                        source_org = normalize_broker_name(b)
+                        break
         else:
             upper_stem = name_without_ext.upper()
             matched_code = next(
@@ -553,12 +618,12 @@ class ExtractionPipelineOrchestrator:
         """Upsert a single ElementSearchPayload into Qdrant collection."""
         text_to_embed = f"{element.caption} {element.summary} {' '.join(element.hashtags)} {element.doc_title or ''} {element.source_org or ''} {' '.join(element.entities)}"
         dense_vec = self.get_dense_embedding(text_to_embed)
-        sparse_tokens = self.tokenize_korean_bm25(text_to_embed)
+        sparse_tokens = build_sparse_vector(text_to_embed)
         sparse_indices = list(sparse_tokens.keys())
         sparse_values = list(sparse_tokens.values())
 
         payload = element.model_dump(mode="json")
-        point_id = abs(hash(element.element_id)) % (2**63 - 1)
+        point_id = generate_point_id(element.doc_id, element.page_number, element.bbox)
 
         self.qdrant_client.upsert(
             collection_name=self.collection_name,
@@ -640,25 +705,25 @@ class ExtractionPipelineOrchestrator:
             extra_metadata=extra_metadata,
         )
 
-        indexed_elements: List[ElementSearchPayload] = []
+        pending_payloads: List[ElementSearchPayload] = []
         extracted_count = 0
 
-        for p_idx in range(1, total_pages + 1):
-            if extracted_count >= max_elements_per_pdf:
-                break
-
-            page = doc[p_idx - 1]
-            candidates = self.cropper.detect_candidate_boxes(page)
-            if not candidates:
-                continue
-
-            page_img = self.cropper.render_page(doc, p_idx)
-
-            for cand in candidates:
+        try:
+            for p_idx in range(1, total_pages + 1):
                 if extracted_count >= max_elements_per_pdf:
                     break
 
-                try:
+                page = doc[p_idx - 1]
+                candidates = self.cropper.detect_candidate_boxes(page)
+                if not candidates:
+                    continue
+
+                page_img = self.cropper.render_page(doc, p_idx)
+
+                for cand in candidates:
+                    if extracted_count >= max_elements_per_pdf:
+                        break
+
                     crop_info = self.cropper.crop_and_save(
                         doc=doc,
                         doc_path=pdf_path,
@@ -682,7 +747,7 @@ class ExtractionPipelineOrchestrator:
                     caption_summary = element.caption[:35] if element.caption else "제목 없음"
                     print(f"    [AI Analyzed] Type: {element.element_type.value} | Title: {caption_summary} | Conf: {element.confidence_score*100:.1f}% ({element.review_status.value})")
 
-                    # ElementSearchPayload 생성
+                    # ElementSearchPayload 생성 (Qdrant에는 즉시 넣지 않고 모아둠)
                     payload_obj = ElementSearchPayload(
                         **element.model_dump(),
                         doc_name=document.doc_name,
@@ -695,13 +760,19 @@ class ExtractionPipelineOrchestrator:
                         collection_id=document.collection_id
                     )
 
-                    # Upsert to Qdrant
-                    self.index_element_to_qdrant(payload_obj)
-                    indexed_elements.append(payload_obj)
+                    pending_payloads.append(payload_obj)
                     extracted_count += 1
 
-                except Exception as e:
-                    print(f"    [Error] Processing visual element on p.{p_idx}: {e}")
+            # 문서 하나의 모든 도표 처리가 정상 완료된 후에만 Qdrant에 일괄 upsert
+            for p_obj in pending_payloads:
+                self.index_element_to_qdrant(p_obj)
+            indexed_elements = pending_payloads
+
+        except Exception as e:
+            # 중간 실패 시 해당 문서의 포인트는 하나도 저장하지 않고 예외 전파
+            print(f"    [처리 실패] '{doc_name}' 도표 처리 중 오류 발생 (Qdrant 포인트 미저장): {e}")
+            doc.close()
+            raise
 
         doc.close()
         return indexed_elements

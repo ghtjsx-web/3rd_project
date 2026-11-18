@@ -38,6 +38,7 @@ services:
       - ./backend/app:/app/app
       - ./data:/data
       - ./shared:/app/shared
+      - ./compare:/app/compare
     depends_on:
       qdrant:
         condition: service_healthy
