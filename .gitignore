@@ -19,6 +19,9 @@ qdrant_data/
 **/data/**
 !**/data/**/
 !**/data/**/.gitkeep
+# 팀이 함께 쓰는 정답셋·엔티티 사전은 추적한다 (docs/roles 참고)
+!figindex/data/gt/**
+!figindex/data/entity_dictionary.csv
 **/model_cache/**
 !**/model_cache/**/.gitkeep
 **/crops/**
