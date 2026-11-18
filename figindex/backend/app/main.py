@@ -731,13 +731,16 @@ def get_filter_options():
 def search_elements_endpoint(
     q: str = Query(..., description="검색 쿼리"),
     element_type: Optional[str] = None,
+    doc_type: Optional[str] = Query(None, description="문서 유형 필터 (REPORT, PUBLIC_REPORT, PAPER, IR)", examples=["REPORT"]),
+    source_org: Optional[str] = Query(None, description="출처 필터 (증권 리포트면 증권사)", examples=["대신증권"]),
+    publish_date: Optional[str] = Query(None, description="발행일 필터 (YYYY-MM-DD)", examples=["2026-10-30"]),
     limit: int = 20
 ):
     """시맨틱 하이브리드 검색 전용 엔드포인트"""
     # get_elements를 함수로 직접 부르면 FastAPI가 기본값(Query 객체)을 채우지 않으므로 나머지 인자를 None으로 넘긴다.
     return get_elements(
-        query=q, element_type=element_type, doc_type=None, source_org=None, target=None,
-        publish_date=None, review_status=None, status=None, limit=limit,
+        query=q, element_type=element_type, doc_type=doc_type, source_org=source_org, target=None,
+        publish_date=publish_date, review_status=None, status=None, limit=limit,
     )
 
 
