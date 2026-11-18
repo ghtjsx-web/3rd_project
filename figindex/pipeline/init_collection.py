@@ -62,7 +62,8 @@ def init_figindex_collection(reset: bool = False):
         },
         sparse_vectors_config={
             "sparse": qmodels.SparseVectorParams(
-                index=qmodels.SparseIndexParams(on_disk=False)
+                index=qmodels.SparseIndexParams(on_disk=False),
+                modifier=qmodels.Modifier.IDF,  # 흔한 단어 점수를 낮춤 (v2와 같은 설정)
             )
         }
     )
