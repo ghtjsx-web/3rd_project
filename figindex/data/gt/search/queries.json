@@ -2,14 +2,23 @@
   {
     "query": "SK하이닉스 2026년 영업이익 전망",
     "relevant_element_ids": [
-      "fig-fec6f3c4966f"
+      "fig-fec6f3c4966f",
+      "fig-ffc12716bb86",
+      "fig-d0db5b0e2080",
+      "fig-1055328008ef",
+      "fig-4cf5f4ff347e",
+      "fig-f4486ac0536d",
+      "fig-0457a0af8e79",
+      "fig-4ab9cedcfc29"
     ]
   },
   {
     "query": "삼성전자 2025년 매출액 영업이익",
     "relevant_element_ids": [
       "fig-46d2e5efc031",
-      "fig-65abca70b41f"
+      "fig-65abca70b41f",
+      "fig-b0a73a93e352",
+      "fig-a5641943a55c"
     ]
   },
   {
@@ -17,7 +26,11 @@
     "relevant_element_ids": [
       "fig-65dc461722d9",
       "fig-0c4438112aa8",
-      "fig-902e8159e118"
+      "fig-902e8159e118",
+      "fig-c35c622c58bd",
+      "fig-18522b5fa629",
+      "fig-5a7183764c32",
+      "fig-94b52d685204"
     ]
   },
   {
@@ -130,7 +143,9 @@
   {
     "query": "KDI 실효지급준비율 적정성 분석 지표",
     "relevant_element_ids": [
-      "fig-94071bd8fd76"
+      "fig-94071bd8fd76",
+      "fig-98365da7bae7",
+      "fig-1511abd863c7"
     ]
   }
 ]
