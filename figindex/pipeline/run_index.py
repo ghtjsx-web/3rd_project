@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from orchestrator import ExtractionPipelineOrchestrator, parse_filename
+from table_parse import is_empty_table_payload
 
 
 def get_doc_type_for_file(pdf_path: Path) -> str:
@@ -39,6 +40,11 @@ def seed_cache_from_qdrant(orchestrator: ExtractionPipelineOrchestrator):
             
             img_filename = Path(img_rel_path).name
             full_img_path = crops_dir / img_filename
+
+            # 표가 비어 있는 TABLE은 캐시에 넣지 않는다. 넣으면 다시 색인해도 Gemini를 부르지 않고
+            # 빈 표를 그대로 재사용하게 된다.
+            if is_empty_table_payload(payload):
+                continue
 
             if full_img_path.exists():
                 img_hash = orchestrator.extractor.get_image_hash(full_img_path)
