@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { DOC_STATUS } from "../lib/types";
 import type { Document, DocStatus } from "../lib/types";
@@ -23,13 +23,79 @@ function formatFileSize(size: number): string {
   return (size / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+function isBatchDocumentSettled(document: Document): boolean {
+  return (
+    document.doc_status === DOC_STATUS.COMPLETED ||
+    document.doc_status === DOC_STATUS.FAILED ||
+    document.doc_status === DOC_STATUS.DUPLICATE
+  );
+}
+
 export default function UploadPanel({ backendUrl }: UploadPanelProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadedDocuments, setUploadedDocuments] = useState<Document[]>([]);
+  const [batchIds, setBatchIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const apiBaseUrl = backendUrl.trim().replace(/\/+$/, "");
+    if (!apiBaseUrl || batchIds.length === 0) return;
+
+    let cancelled = false;
+    let isRefreshing = false;
+
+    async function refreshBatchStatus() {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      try {
+        for (const batch_id of batchIds) {
+          const response = await fetch(
+            apiBaseUrl + "/api/batches/" + encodeURIComponent(batch_id)
+          );
+          const responseBody = await response.json().catch(() => null);
+          if (!response.ok || !Array.isArray(responseBody)) {
+            throw new Error("문서 처리 상태를 불러오지 못했습니다.");
+          }
+
+          const batchDocuments = responseBody as Document[];
+          if (cancelled) return;
+          setUploadedDocuments((currentDocuments) => [
+            ...batchDocuments,
+            ...currentDocuments.filter((document) => document.batch_id !== batch_id),
+          ]);
+
+          const isBatchSettled =
+            batchDocuments.length > 0 && batchDocuments.every(isBatchDocumentSettled);
+          if (isBatchSettled) {
+            setBatchIds((currentBatchIds) =>
+              currentBatchIds.filter((currentBatchId) => currentBatchId !== batch_id)
+            );
+          }
+        }
+        if (!cancelled) setErrorMessage(null);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setErrorMessage(
+            error instanceof Error ? error.message : "문서 처리 상태를 불러오지 못했습니다."
+          );
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    void refreshBatchStatus();
+    const intervalId = window.setInterval(() => {
+      void refreshBatchStatus();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [backendUrl, batchIds]);
 
   function addPdfFiles(newFiles: File[]) {
     const pdfFiles = newFiles.filter((selectedFile) =>
@@ -84,10 +150,19 @@ export default function UploadPanel({ backendUrl }: UploadPanelProps) {
         throw new Error("서버 응답을 확인할 수 없습니다.");
       }
 
+      const batchDocuments = responseBody as Document[];
       setUploadedDocuments((currentDocuments) => [
-        ...(responseBody as Document[]),
+        ...batchDocuments,
         ...currentDocuments,
       ]);
+      const batch_id = batchDocuments[0]?.batch_id;
+      if (batch_id) {
+        setBatchIds((currentBatchIds) =>
+          currentBatchIds.includes(batch_id)
+            ? currentBatchIds
+            : [...currentBatchIds, batch_id]
+        );
+      }
       setSelectedFiles([]);
     } catch (error: unknown) {
       setErrorMessage(
@@ -191,39 +266,76 @@ export default function UploadPanel({ backendUrl }: UploadPanelProps) {
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900">업로드 결과</h2>
         {uploadedDocuments.length > 0 ? (
-          <ul className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
-            {uploadedDocuments.map((document) => (
-              <li
-                key={document.doc_id}
-                className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-800">
-                    {document.doc_name}
-                  </p>
-                  {document.doc_error && (
-                    <p className="mt-1 break-all text-xs text-slate-500">
-                      {document.doc_status === DOC_STATUS.DUPLICATE
-                        ? "기존 문서 ID: " + document.doc_error
-                        : document.doc_error}
-                    </p>
-                  )}
+          <div className="mt-4 space-y-5">
+            {Array.from(
+              new Set(
+                uploadedDocuments
+                  .map((document) => document.batch_id)
+                  .filter((batch_id): batch_id is string => Boolean(batch_id))
+              )
+            ).map((batch_id) => {
+              const batchDocuments = uploadedDocuments.filter(
+                (document) => document.batch_id === batch_id
+              );
+              const settledCount = batchDocuments.filter(isBatchDocumentSettled).length;
+              const progress = batchDocuments.length
+                ? Math.round((settledCount / batchDocuments.length) * 100)
+                : 0;
+
+              return (
+                <div key={batch_id}>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <h3 className="font-semibold text-slate-800">업로드 묶음</h3>
+                    <span className="text-slate-600">
+                      처리 결과 {settledCount}/{batchDocuments.length}건 ({progress}%)
+                    </span>
+                  </div>
+                  <progress
+                    className="mt-2 h-2 w-full accent-indigo-600"
+                    value={settledCount}
+                    max={batchDocuments.length || 1}
+                    aria-label="문서 처리 진행률"
+                  />
+                  <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
+                    {batchDocuments.map((document) => (
+                      <li
+                        key={document.doc_id}
+                        className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">
+                            {document.doc_name}
+                          </p>
+                          {document.doc_error && (
+                            <p className="mt-1 break-all text-xs text-slate-500">
+                              {document.doc_status === DOC_STATUS.DUPLICATE
+                                ? "기존 문서 ID: " + document.doc_error
+                                : document.doc_error}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={
+                            "shrink-0 self-start rounded-full px-3 py-1 text-xs font-bold sm:self-auto " +
+                            (document.doc_status === DOC_STATUS.COMPLETED
+                              ? "bg-emerald-100 text-emerald-800"
+                              : document.doc_status === DOC_STATUS.UPLOADED ||
+                                document.doc_status === DOC_STATUS.PROCESSING
+                              ? "bg-indigo-100 text-indigo-800"
+                              : document.doc_status === DOC_STATUS.DUPLICATE
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-rose-100 text-rose-800")
+                          }
+                        >
+                          {DOC_STATUS_LABELS[document.doc_status]}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <span
-                  className={
-                    "shrink-0 self-start rounded-full px-3 py-1 text-xs font-bold sm:self-auto " +
-                    (document.doc_status === DOC_STATUS.UPLOADED
-                      ? "bg-emerald-100 text-emerald-800"
-                      : document.doc_status === DOC_STATUS.DUPLICATE
-                      ? "bg-amber-100 text-amber-800"
-                      : "bg-rose-100 text-rose-800")
-                  }
-                >
-                  {DOC_STATUS_LABELS[document.doc_status]}
-                </span>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </div>
         ) : (
           <p className="mt-2 text-sm text-slate-500">아직 등록한 PDF가 없습니다.</p>
         )}

@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Sequence, Tuple
 
-from shared.schemas import Batch, Document, DocStatus
+from shared.schemas import Batch, Document, DocStatus, ReviewLog
 
 
 _CREATE_SCHEMA = """
@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS documents (
 
 CREATE INDEX IF NOT EXISTS index_documents_batch_id ON documents(batch_id);
 CREATE INDEX IF NOT EXISTS index_documents_doc_hash ON documents(doc_hash);
+
+CREATE TABLE IF NOT EXISTS review_logs (
+    review_id TEXT PRIMARY KEY,
+    element_id TEXT NOT NULL,
+    reviewer TEXT NOT NULL,
+    review_action TEXT NOT NULL,
+    changed_fields TEXT NOT NULL,
+    "before" TEXT NOT NULL,
+    "after" TEXT NOT NULL,
+    confidence_score REAL NOT NULL,
+    reviewed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS index_review_logs_element_id ON review_logs(element_id);
 """
 
 
@@ -204,6 +218,75 @@ def persist_batch(
         connection.rollback()
         for created_path in created_paths:
             created_path.unlink(missing_ok=True)
+        raise
+    finally:
+        connection.close()
+
+
+def get_batch_documents(db_path: str, batch_id: str) -> list[Document] | None:
+    """Return a batch's documents, or None when the batch does not exist."""
+    database_path = Path(db_path)
+    if not database_path.exists():
+        return None
+
+    connection = sqlite3.connect(str(database_path), timeout=30)
+    connection.row_factory = sqlite3.Row
+    try:
+        batch = connection.execute(
+            "SELECT batch_id FROM batches WHERE batch_id = ?",
+            (batch_id,),
+        ).fetchone()
+        if batch is None:
+            return None
+
+        rows = connection.execute(
+            "SELECT * FROM documents WHERE batch_id = ? ORDER BY rowid",
+            (batch_id,),
+        ).fetchall()
+        documents = []
+        for row in rows:
+            document_data = dict(row)
+            document_data["authors"] = json.loads(document_data["authors"])
+            document_data["extra_metadata"] = json.loads(document_data["extra_metadata"])
+            documents.append(Document.model_validate(document_data))
+        return documents
+    finally:
+        connection.close()
+
+
+def append_review_log(db_path: str, review_log: ReviewLog) -> None:
+    """Append one immutable ReviewLog record to the metadata database."""
+    database_path = Path(db_path)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+
+    connection = sqlite3.connect(str(database_path), timeout=30)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(_CREATE_SCHEMA)
+        review_data = review_log.model_dump(mode="json")
+        connection.execute(
+            """
+            INSERT INTO review_logs (
+                review_id, element_id, reviewer, review_action, changed_fields,
+                "before", "after", confidence_score, reviewed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                review_data["review_id"],
+                review_data["element_id"],
+                review_data["reviewer"],
+                review_data["review_action"],
+                json.dumps(review_data["changed_fields"], ensure_ascii=False),
+                json.dumps(review_data["before"], ensure_ascii=False),
+                json.dumps(review_data["after"], ensure_ascii=False),
+                review_data["confidence_score"],
+                review_data["reviewed_at"],
+            ),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
         raise
     finally:
         connection.close()

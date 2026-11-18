@@ -63,3 +63,7 @@
 - 같은 doc_hash가 이미 등록되어 있으면 doc_status=DUPLICATE, doc_error에 기존 doc_id를 반환합니다.
 - 기존 파일명과 다른 내용이 충돌하면 파일을 덮지 않고 doc_status=FAILED로 기록합니다.
 - 이 API는 업로드와 중복 판정만 하며 파이프라인을 실행하지 않습니다.
+
+## 7. PDF 묶음 처리 상태 조회
+- GET /api/batches/{batch_id}: 해당 묶음의 Document 목록(List[Document])을 반환합니다. 존재하지 않는 batch_id는 404를 반환합니다.
+- 화면은 응답의 doc_status를 세어 진행률을 표시하며, COMPLETED·FAILED·DUPLICATE를 처리 완료 건수에 포함합니다.
