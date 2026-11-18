@@ -634,7 +634,11 @@ def search_elements_endpoint(
     limit: int = 20
 ):
     """시맨틱 하이브리드 검색 전용 엔드포인트"""
-    return get_elements(query=q, element_type=element_type, limit=limit)
+    # get_elements를 함수로 직접 부르면 FastAPI가 기본값(Query 객체)을 채우지 않으므로 나머지 인자를 None으로 넘긴다.
+    return get_elements(
+        query=q, element_type=element_type, doc_type=None, source_org=None, target=None,
+        publish_date=None, review_status=None, status=None, limit=limit,
+    )
 
 
 @app.get("/api/review/elements", response_model=List[ElementSearchPayload])
