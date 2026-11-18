@@ -1,0 +1,151 @@
+[
+  {
+    "query": "SK하이닉스 2026년 영업이익 전망",
+    "relevant_element_ids": [
+      "fig-fec6f3c4966f",
+      "fig-ffc12716bb86",
+      "fig-d0db5b0e2080",
+      "fig-1055328008ef",
+      "fig-4cf5f4ff347e",
+      "fig-f4486ac0536d",
+      "fig-0457a0af8e79",
+      "fig-4ab9cedcfc29"
+    ]
+  },
+  {
+    "query": "삼성전자 2025년 매출액 영업이익",
+    "relevant_element_ids": [
+      "fig-46d2e5efc031",
+      "fig-65abca70b41f",
+      "fig-b0a73a93e352",
+      "fig-a5641943a55c"
+    ]
+  },
+  {
+    "query": "카카오 2026년 실적 전망",
+    "relevant_element_ids": [
+      "fig-65dc461722d9",
+      "fig-0c4438112aa8",
+      "fig-902e8159e118",
+      "fig-c35c622c58bd",
+      "fig-18522b5fa629",
+      "fig-5a7183764c32",
+      "fig-94b52d685204"
+    ]
+  },
+  {
+    "query": "에코프로비엠 분기별 영업이익 적자 규모",
+    "relevant_element_ids": [
+      "fig-033ec82f4baf"
+    ]
+  },
+  {
+    "query": "CS윈드 2025년 매출액 밸류에이션",
+    "relevant_element_ids": [
+      "fig-531b2728a79d",
+      "fig-4305cb5cb5ac",
+      "fig-bd2fa3ec2510"
+    ]
+  },
+  {
+    "query": "여름철 전력수급 대책 회의 일정",
+    "relevant_element_ids": [
+      "fig-04392629a747"
+    ]
+  },
+  {
+    "query": "고립은둔 청년 잠재계층 적합도 지수",
+    "relevant_element_ids": [
+      "fig-e6cbd55fd8e9",
+      "fig-832640516e06"
+    ]
+  },
+  {
+    "query": "탄소 순환 학습 진보도 구조",
+    "relevant_element_ids": [
+      "fig-69cf1df8328c"
+    ]
+  },
+  {
+    "query": "원달러 환율 장기 추이",
+    "relevant_element_ids": [
+      "fig-e874a0e04074",
+      "fig-cd4ff4d67e34"
+    ]
+  },
+  {
+    "query": "휴머노이드 로봇 강화학습 전신 제어 보행",
+    "relevant_element_ids": [
+      "fig-990fcc14b39b",
+      "fig-cdb23dd34b77",
+      "fig-fc4d727334ed",
+      "fig-92f90878b198"
+    ]
+  },
+  {
+    "query": "2500대 R&D 투자 기업 국가별 비중",
+    "relevant_element_ids": [
+      "fig-7fcf58c4f91e"
+    ]
+  },
+  {
+    "query": "9월 대미국 대중국 수출액 증감률 비교",
+    "relevant_element_ids": [
+      "fig-56f8a8deb83e"
+    ]
+  },
+  {
+    "query": "청년층 실업률 전년 동월 대비 변화",
+    "relevant_element_ids": [
+      "fig-c8654631fdb2"
+    ]
+  },
+  {
+    "query": "IMD 국가경쟁력 한국 4대 분야 순위",
+    "relevant_element_ids": [
+      "fig-54d13966ae72",
+      "fig-e7b23fe24233"
+    ]
+  },
+  {
+    "query": "신약개발 정부 R&D 투자 단계별 비중 추이",
+    "relevant_element_ids": [
+      "fig-cade9c0cf61b"
+    ]
+  },
+  {
+    "query": "KIEP 미국 반도체 수출통제 엔비디아 중국 대응",
+    "relevant_element_ids": [
+      "fig-6c1c0ae988e9",
+      "fig-67b114c7d923"
+    ]
+  },
+  {
+    "query": "한국은행 8월 수출물가지수 등락률",
+    "relevant_element_ids": [
+      "fig-5cd7f352d9d4",
+      "fig-9105fb567f06"
+    ]
+  },
+  {
+    "query": "KISTEP AI 반도체 종류와 역할",
+    "relevant_element_ids": [
+      "fig-28b2fbac5529",
+      "fig-067c90ed7a73"
+    ]
+  },
+  {
+    "query": "공공행정 AI 도입 공무원 인식 Q표본 분류",
+    "relevant_element_ids": [
+      "fig-59dcc03cb3dd"
+    ]
+  },
+  {
+    "query": "KDI 실효지급준비율 적정성 분석 지표",
+    "relevant_element_ids": [
+      "fig-94071bd8fd76",
+      "fig-98365da7bae7",
+      "fig-1511abd863c7"
+    ]
+  }
+]
