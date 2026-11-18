@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import ComparisonModal from "./components/ComparisonModal";
+import UploadPanel from "./components/UploadPanel";
 import ReviewTab from "./components/ReviewTab";
 import { getDocTypeLabels, formatSourceTarget } from "./lib/docTypeLabels";
 import { HealthStatus, VisualElement, FilterOptions } from "./lib/types";
@@ -31,7 +32,7 @@ export default function Home() {
   const [isLegacyApi, setIsLegacyApi] = useState<boolean>(false);
 
   // Active Tab State (Gallery vs Admin Review)
-  const [activeTab, setActiveTab] = useState<"gallery" | "review">("gallery");
+  const [activeTab, setActiveTab] = useState<"gallery" | "review" | "upload">("gallery");
 
   // Comparison State (Max 2 items)
   const [selectedForCompare, setSelectedForCompare] = useState<VisualElement[]>([]);
@@ -359,6 +360,19 @@ export default function Home() {
           </span>
         </button>
 
+        <button
+          type="button"
+          onClick={() => setActiveTab("upload")}
+          className={
+            "px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 " +
+            (activeTab === "upload"
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
+              : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200")
+          }
+        >
+          <span>📄 PDF 업로드</span>
+        </button>
+
         <Link
           href="/compare"
           className="px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
@@ -376,6 +390,8 @@ export default function Home() {
             fetchHealth();
           }}
         />
+      ) : activeTab === "upload" ? (
+        <UploadPanel backendUrl={backendUrl} />
       ) : (
         /* Standard Gallery Search View */
         <>
