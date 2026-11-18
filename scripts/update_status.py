@@ -57,6 +57,8 @@ def get_git_info() -> Dict[str, Any]:
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         res["branch"] = p.stdout.strip()
@@ -67,6 +69,8 @@ def get_git_info() -> Dict[str, Any]:
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         res["commit"] = p2.stdout.strip()
@@ -77,6 +81,8 @@ def get_git_info() -> Dict[str, Any]:
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         lines = [line for line in p3.stdout.splitlines() if line.strip()]

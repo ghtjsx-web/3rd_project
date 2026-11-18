@@ -51,11 +51,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-18 18:12** | `update_status.py`가 Windows에서 한글 커밋 메시지를 못 읽던 문제 (cp949) | `scripts/update_status.py` | `python scripts/update_status.py` | git 호출 3곳 UTF-8로 읽음, 1절 '최신 커밋' 정상 표시 | **PASS** |
 | **11-18 18:06** | 검색 정식 측정 (팀원2 결근 대신 팀장) | 없음 | `python scripts/eval_search.py` | P@5 0.900, 응답 0.314초(첫 실행)·0.024초(캐시) | **PASS** |
 | **11-18 17:46** | 팀원1 진행률·ReviewLog·기존 PDF 등록(#36) 병합, 거래소 종목명(#34) 재정규화 | `backend/app/upload_store.py` 등, (데이터) v2 16포인트 | `python -m app.register_existing_pdfs`, `fix_metadata_from_filename.py` | 기존 PDF 141개 등록, 씨엠티엑스 5·씨에스윈드 5·LIG디펜스앤에어로스페이스 6 | **PASS** |
 | **11-18 17:30** | 업로드 PDF 이름이 형식과 달라도 표지에서 종목·증권사·발행일 채우기, 현황서 반려 건수 분리 | `pipeline/orchestrator.py`, `pipeline/test_cover_metadata.py`, `scripts/update_status.py` | `pytest pipeline/test_cover_metadata.py pipeline/test_metadata_generalization.py` | 새 테스트 7건·기존 메타데이터 테스트 통과 | **PASS** |
 | **11-18 16:57** | 팀원1 PDF 묶음 업로드(#11) 병합, main을 ryu에 합침 | `backend/app/main.py`, `backend/app/upload_store.py`, `frontend/app/components/UploadPanel.tsx` 등 | 업로드 저장 로직 직접 시험 | 처음 등록·중복·같은 이름 충돌·묶음 내 중복 5가지 기대대로 | **PASS** |
-| **11-18 16:40** | 비교 가능성 점검의 종목명 하드코딩 제거 (사전만 사용) | `pipeline/analyze_comparability.py`, `pipeline/test_analyze_comparability_entity.py` | `pytest pipeline/test_analyze_comparability_entity.py` | 3건 통과, 하드코딩 맵 2개 삭제(종목 25·별칭 7) | **PASS** |
 
 ---
 
@@ -128,10 +128,11 @@
 4. **Gemini 무료 티어 분당 14회**: 공용 `GeminiRateLimiter` 경유. 3.8-flash 503 시 lite로 대체되며 lite도 429 한도 있음. `reextract_empty_tables.py --reuse-cache`는 Gemini 호출 없이 후처리만 다시 함.
 5. **승격 후 메타데이터 보정 순서**: `promote_test_to_service.py`는 payload 전체를 덮어쓴다. 메타데이터 보정은 승격 뒤에 다시 돌린다.
 6. **확신도가 높아도 요소가 아닐 수 있음**: 목차 페이지도 표로 읽히면 0.95까지 나와 자동 승인됨. 승격·대량 반영 후에는 오분류 점검으로 한 번 더 본다.
-7. **git pull 실패 (untracked 파일)**: 저장소에 새로 들어올 파일과 같은 이름의 로컬 파일이 있으면 pull이 멈춘다. 받은 스크립트·zip·ps1은 `C:\workAi\figindex_work`에 둔다.
-8. **실행 위치**: `scripts\*.py`는 저장소 루트, `docker compose`는 `figindex/`에서.
-9. **PowerShell 한글 깨짐**: Windows PowerShell 5.1은 BOM 없는 UTF-8 ps1과 REST 응답의 한글을 깨뜨려 보여 준다(데이터는 정상). ps1은 BOM 붙여 저장.
-10. **Gemini 캐시를 끄지 않는다** (`extractor.py`).
+7. **Windows 콘솔 cp949**: 파이썬에서 git을 부를 때 `encoding="utf-8"`을 주지 않으면 한글 커밋 메시지에서 UnicodeDecodeError가 난다.
+8. **git pull 실패 (untracked 파일)**: 저장소에 새로 들어올 파일과 같은 이름의 로컬 파일이 있으면 pull이 멈춘다. 받은 스크립트·zip·ps1은 `C:\workAi\figindex_work`에 둔다.
+9. **실행 위치**: `scripts\*.py`는 저장소 루트, `docker compose`는 `figindex/`에서.
+10. **PowerShell 한글 깨짐**: Windows PowerShell 5.1은 BOM 없는 UTF-8 ps1과 REST 응답의 한글을 깨뜨려 보여 준다(데이터는 정상). ps1은 BOM 붙여 저장.
+11. **Gemini 캐시를 끄지 않는다** (`extractor.py`).
 
 ---
 
