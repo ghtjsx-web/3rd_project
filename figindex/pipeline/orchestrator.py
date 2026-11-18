@@ -10,7 +10,7 @@ import json
 import uuid
 from datetime import date
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,9 @@ from shared.schemas import (
     Element,
     ElementSearchPayload,
     DocStatus,
+    EntityType,
     PIPELINE_VERSION,
+    ENTITY_DICTIONARY_PATH,
 )
 from shared.sparse import build_sparse_vector, generate_point_id
 
@@ -283,6 +285,127 @@ def parse_filename(doc_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# 표지 기반 메타데이터 (파일명이 RPT_날짜_종목_증권사 형식이 아니어도 채우기 위함)
+# 종목명은 엔티티 사전(entity_name)만 기준으로 한다 (AGENTS.md 5절).
+# ---------------------------------------------------------------------------
+
+_ENTITY_INDEX_CACHE: Optional[Dict[str, Dict[str, str]]] = None
+
+
+def _entity_key(name: str) -> str:
+    """사전 대조용 키: 유니코드 정규화, 공백 제거, 대소문자 무시."""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFC", str(name))).casefold()
+
+
+def _resolve_entity_dictionary_path() -> Path:
+    path = Path(ENTITY_DICTIONARY_PATH)
+    if not path.is_absolute() and not path.exists():
+        path = Path(__file__).resolve().parent.parent / ENTITY_DICTIONARY_PATH  # figindex/data/...
+    return path
+
+
+def load_company_index(path: Optional[Path] = None) -> Dict[str, Dict[str, str]]:
+    """엔티티 사전에서 기업(COMPANY)만 읽어 {'by_ticker': {종목코드: entity_name}, 'by_key': {이름·별칭 키: entity_name}}을 돌려준다."""
+    global _ENTITY_INDEX_CACHE
+    if path is None and _ENTITY_INDEX_CACHE is not None:
+        return _ENTITY_INDEX_CACHE
+    import csv
+
+    index: Dict[str, Dict[str, str]] = {"by_ticker": {}, "by_key": {}}
+    dict_path = path or _resolve_entity_dictionary_path()
+    if not dict_path.exists():
+        msg = f"[Warn] 엔티티 사전이 없어 표지에서 종목을 찾지 않습니다: {dict_path}"
+        logger.warning(msg)
+        print(msg)
+    else:
+        with open(dict_path, encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                entity_name = (row.get("entity_name") or "").strip()
+                if not entity_name or (row.get("entity_type") or "").strip() != EntityType.COMPANY.value:
+                    continue
+                ticker = (row.get("ticker") or "").strip()
+                if ticker:
+                    index["by_ticker"][ticker] = entity_name
+                names = [entity_name] + [a.strip() for a in (row.get("aliases") or "").split("|") if a.strip()]
+                for name in names:
+                    index["by_key"].setdefault(_entity_key(name), entity_name)
+    if path is None:
+        _ENTITY_INDEX_CACHE = index
+    return index
+
+
+def to_company_entity_name(name: Optional[str], index: Dict[str, Dict[str, str]]) -> Optional[str]:
+    """종목명 표기(삼전, KTnG, LNF 등)를 사전 entity_name으로 바꾼다. 사전에 없으면 그대로."""
+    if not name:
+        return name
+    return index["by_key"].get(_entity_key(name), name)
+
+
+def find_company_in_text(text: str, index: Dict[str, Dict[str, str]]) -> Tuple[Optional[str], Optional[str]]:
+    """표지 글에서 종목을 찾는다. (entity_name, 종목코드)를 돌려준다.
+
+    1) 사전에 있는 6자리 종목코드가 처음 나오는 것
+    2) 없으면 앞 15줄에서 사전 기업 이름·별칭(2자 이상)이 가장 먼저 나오는 것 (같은 위치면 긴 이름)
+    """
+    for m in re.finditer(r"(?<!\d)(\d{6})(?!\d)", text):
+        if m.group(1) in index["by_ticker"]:
+            return index["by_ticker"][m.group(1)], m.group(1)
+    head = _entity_key("\n".join([line for line in text.split("\n") if line.strip()][:15]))
+    best: Optional[Tuple[int, int, str]] = None
+    for key, entity_name in index["by_key"].items():
+        if len(key) < 2:
+            continue
+        pos = head.find(key)
+        if pos >= 0 and (best is None or pos < best[0] or (pos == best[0] and len(key) > best[1])):
+            best = (pos, len(key), entity_name)
+    return (best[2], None) if best else (None, None)
+
+
+def find_broker_in_text(text: str) -> Optional[str]:
+    """글에서 증권사 이름이 가장 먼저 나오는 것을 BROKER_ALIASES 정식 명칭으로 돌려준다.
+
+    'SK', 'KB'처럼 짧은 별칭은 종목명(SK하이닉스 등)과 헷갈리므로 '증권'·'투자'가 들어간 표기만 대조한다.
+    """
+    best: Optional[Tuple[int, int, str]] = None
+    for alias, official in BROKER_ALIASES.items():
+        if "증권" not in alias and "투자" not in alias:
+            continue
+        pos = text.find(alias)
+        if pos >= 0 and (best is None or pos < best[0] or (pos == best[0] and len(alias) > best[1])):
+            best = (pos, len(alias), official)
+    return best[2] if best else None
+
+
+def find_date_in_text(text: str) -> Optional[date]:
+    """글에서 처음 나오는 올바른 날짜 (2026.11.18 / 2026-11-18 / 2026/11/18 / 2026. 11. 18 / 2026년 11월 18일)."""
+    pattern = r"(20\d{2})\s*(?:[.\-/]|년)\s*(\d{1,2})\s*(?:[.\-/]|월)\s*(\d{1,2})(?!\d)"
+    for m in re.finditer(pattern, text):
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            continue
+    return None
+
+
+def find_date_in_doc_name(name_without_ext: str, today: Optional[date] = None) -> Optional[date]:
+    """파일명에서 날짜: YYYYMMDD가 있으면 그것, 없으면 끝의 MMDD(옛 형식)를 올해로 보되 미래면 작년으로."""
+    today = today or date.today()
+    for m in re.finditer(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)", name_without_ext):
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            continue
+    m = re.search(r"(?<!\d)(\d{2})(\d{2})$", name_without_ext)
+    if m:
+        try:
+            parsed = date(today.year, int(m.group(1)), int(m.group(2)))
+            return parsed if parsed <= today else date(today.year - 1, parsed.month, parsed.day)
+        except ValueError:
+            return None
+    return None
+
+
 def parse_rpt_filename(doc_name: str) -> Optional[Dict[str, Any]]:
     """
     RPT_YYYYMMDD_종목_증권사.pdf 파일명에서 publish_date, source_org, company를 파싱합니다.
@@ -445,16 +568,23 @@ class ExtractionPipelineOrchestrator:
 
     def extract_document_metadata(self, doc: fitz.Document, doc_name: str) -> Dict[str, Any]:
         """
-        Extract document-level metadata once (cover page text layer + file name parsing) (Item 3).
-        Inherited by all elements in this report.
+        문서 메타데이터를 한 번 추출한다 (파일명 + 표지 글자). 모든 요소가 이 값을 물려받는다.
+
+        - 파일명이 RPT_날짜_종목_증권사 형식이면 파일명 값을 우선한다 (결정 1).
+        - 형식이 아니면 표지에서 찾는다: 종목은 엔티티 사전의 종목코드·이름, 증권사는 BROKER_ALIASES,
+          발행일은 표지 날짜 → 파일명 날짜 순. 못 찾으면 None으로 둔다 (오늘 날짜 등으로 채우지 않는다).
+        - 종목명은 항상 엔티티 사전 entity_name으로 저장한다.
         """
         cover_text = doc[0].get_text("text") if len(doc) > 0 else ""
+        last_text = doc[len(doc) - 1].get_text("text") if len(doc) > 1 else ""
         name_without_ext = re.sub(
             r"\.pdf$",
             "",
             unicodedata.normalize("NFC", Path(doc_name).name),
             flags=re.IGNORECASE,
         ).strip()
+        company_index = load_company_index()
+        cover_target, cover_ticker = find_company_in_text(cover_text, company_index)
 
         parsed_fn = parse_new_filename(doc_name)
 
@@ -464,22 +594,11 @@ class ExtractionPipelineOrchestrator:
             source_org = parsed_fn.get("source_org")
             pub_date = parsed_fn["publish_date"]
             doc_type = parsed_fn["doc_type"]
-            company = parsed_fn.get("company") or (target if doc_type == "REPORT" else None)
-
-            # 파일명 증권사 자리가 미확인(None)인 경우 표지에서 증권사 매칭 시도
-            if not source_org and doc_type == "REPORT":
-                broker_candidates = [
-                    "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
-                    "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
-                    "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
-                    "SK증권", "유진투자증권", "DB증권", "DB금융투자", "iM증권", "하이투자증권",
-                    "다올투자증권", "LS증권", "상상인증권",
-                ]
-                for b in broker_candidates:
-                    short_b = b.replace("투자증권", "").replace("금융투자", "").replace("증권", "")
-                    if b in cover_text or (len(short_b) >= 2 and short_b in cover_text):
-                        source_org = normalize_broker_name(b)
-                        break
+            if doc_type == "REPORT":
+                target = to_company_entity_name(target, company_index)
+                # 파일명 증권사 자리가 미확인(None)인 경우 표지 → 마지막 페이지(고지문)에서 찾기
+                if not source_org:
+                    source_org = find_broker_in_text(cover_text) or find_broker_in_text(last_text)
         else:
             upper_stem = name_without_ext.upper()
             matched_code = next(
@@ -488,49 +607,31 @@ class ExtractionPipelineOrchestrator:
             )
             if matched_code:
                 doc_type = DOC_TYPE_CODE_MAP[matched_code]
-                target = None
-                msg = f"[Warn] 파일명 형식이 맞지 않아 대상을 비워둡니다 (doc_name='{doc_name}')"
-                logger.warning(msg)
-                print(msg)
+                target = cover_target if doc_type == "REPORT" else None
+                if not target:
+                    msg = f"[Warn] 파일명 형식이 맞지 않아 대상을 비워둡니다 (doc_name='{doc_name}')"
+                    logger.warning(msg)
+                    print(msg)
             else:
                 doc_type = "REPORT"
-                # 옛날 형식(예: 'BGF리테일1106.pdf', 'CJ ENM 1106.pdf') -> 기업명을 target으로 추출
-                company_candidate = re.sub(r"[\s_-]*\d{4}$", "", name_without_ext).strip()
-                target = company_candidate if company_candidate else None
+                target = cover_target
+                if not target:
+                    # 옛날 형식(예: 'BGF리테일1106.pdf', 'CJ ENM 1106.pdf')만 파일명에서 기업명을 가져온다
+                    legacy = re.fullmatch(r"([^_]+?)[\s-]*\d{4}", name_without_ext)
+                    if legacy:
+                        target = to_company_entity_name(legacy.group(1).strip(), company_index)
+                if not target:
+                    msg = f"[Warn] 표지와 파일명에서 종목을 찾지 못했습니다 (doc_name='{doc_name}')"
+                    logger.warning(msg)
+                    print(msg)
 
-            # 표지에서 증권사(출처) 매칭 (REPORT일 때만)
+            # 증권사: 표지 → 마지막 페이지(고지문) (REPORT일 때만)
             source_org = None
             if doc_type == "REPORT":
-                broker_candidates = [
-                    "IBK투자증권", "미래에셋증권", "신한투자증권", "키움증권", "하나증권",
-                    "대신증권", "KB증권", "삼성증권", "NH투자증권", "유안타증권",
-                    "한국투자증권", "메리츠증권", "교보증권", "현대차증권", "한화투자증권",
-                    "SK증권", "유진투자증권", "DB증권", "DB금융투자", "iM증권", "하이투자증권",
-                    "다올투자증권", "LS증권", "상상인증권",
-                ]
-                for b in broker_candidates:
-                    short_b = b.replace("투자증권", "").replace("금융투자", "").replace("증권", "")
-                    if b in cover_text or (len(short_b) >= 2 and short_b in cover_text):
-                        source_org = normalize_broker_name(b)
-                        break
+                source_org = find_broker_in_text(cover_text) or find_broker_in_text(last_text)
 
-            # 발행일 추출 (표지 우선 -> 파일명 끝 MMdd 대체)
-            pub_date = date.today()
-            date_match = re.search(r"(202[4-6])[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})", cover_text)
-            if date_match:
-                try:
-                    y, m, d = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
-                    pub_date = date(y, m, d)
-                except Exception:
-                    pub_date = date.today()
-            else:
-                fn_date_match = re.search(r"(\d{2})(\d{2})$", name_without_ext)
-                if fn_date_match:
-                    try:
-                        m, d = int(fn_date_match.group(1)), int(fn_date_match.group(2))
-                        pub_date = date(2025, m, d)
-                    except Exception:
-                        pub_date = date.today()
+            # 발행일: 표지 → 파일명. 못 찾으면 None
+            pub_date = find_date_in_text(cover_text) or find_date_in_doc_name(name_without_ext)
 
         # REPORT일 때만 표지에서 종목코드·애널리스트·업종 추출
         ticker = None
@@ -538,9 +639,11 @@ class ExtractionPipelineOrchestrator:
         industry = None
 
         if doc_type == "REPORT":
-            ticker_match = re.search(r"\((\d{6})\)|\b(\d{6})\b", cover_text)
-            if ticker_match:
-                ticker = ticker_match.group(1) or ticker_match.group(2)
+            ticker = cover_ticker
+            if not ticker:
+                ticker_match = re.search(r"\((\d{6})\)|\b(\d{6})\b", cover_text)
+                if ticker_match:
+                    ticker = ticker_match.group(1) or ticker_match.group(2)
 
             analyst_match = re.search(r"([가-힣]{2,4})\s*(?:연구원|애널리스트|위원|RA)", cover_text)
             if analyst_match:
@@ -677,9 +780,9 @@ class ExtractionPipelineOrchestrator:
             try:
                 pub_date = date.fromisoformat(pub_date)
             except Exception:
-                pub_date = date.today()
+                pub_date = None
         elif not isinstance(pub_date, date):
-            pub_date = date.today()
+            pub_date = None  # 발행일을 못 찾으면 비워 둔다 (오늘 날짜로 채우지 않음)
 
         extra_metadata = {
             "target": target,

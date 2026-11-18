@@ -97,6 +97,7 @@ def get_qdrant_info(
         "doc_count": "조회 실패",
         "approved_count": "조회 실패",
         "pending_count": "조회 실패",
+        "rejected_count": "조회 실패",
         "timestamp": ts,
         "success": False,
     }
@@ -120,6 +121,7 @@ def get_qdrant_info(
         offset = None
         approved = 0
         pending = 0
+        rejected = 0
 
         while True:
             body: Dict[str, Any] = {
@@ -151,6 +153,8 @@ def get_qdrant_info(
                 st = pl.get("review_status")
                 if st == ReviewStatus.APPROVED.value or st == ReviewStatus.APPROVED:
                     approved += 1
+                elif st == ReviewStatus.REJECTED.value or st == ReviewStatus.REJECTED:
+                    rejected += 1  # 반려는 검수대기와 따로 센다
                 else:
                     pending += 1
 
@@ -161,6 +165,7 @@ def get_qdrant_info(
         info["doc_count"] = len(doc_names)
         info["approved_count"] = approved
         info["pending_count"] = pending
+        info["rejected_count"] = rejected
         info["success"] = True
     except Exception as e:
         print(f"[Warn] Qdrant 정보 조회 실패: {e}")
@@ -377,7 +382,7 @@ def generate_auto_markdown() -> str:
         f"| **Git 브랜치** | `{git_info['branch']}` | {git_info['timestamp']} |",
         f"| **Git 최신 커밋** | `{git_info['commit']}` | {git_info['timestamp']} |",
         f"| **Git 미커밋 변경 파일** | `{git_info['uncommitted_count']}개 파일` | {git_info['timestamp']} |",
-        f"| **Qdrant 컬렉션 (`v2`) 포인트** | `{qdrant_info['points_count']}` (승인: `{qdrant_info['approved_count']}`, 검수대기: `{qdrant_info['pending_count']}`) | {qdrant_info['timestamp']} |",
+        f"| **Qdrant 컬렉션 (`v2`) 포인트** | `{qdrant_info['points_count']}` (승인: `{qdrant_info['approved_count']}`, 검수대기: `{qdrant_info['pending_count']}`, 반려: `{qdrant_info['rejected_count']}`) | {qdrant_info['timestamp']} |",
         f"| **Qdrant 색인 고유 문서** | `{qdrant_info['doc_count']}개 문서` | {qdrant_info['timestamp']} |",
         f"| **원문 PDF 총계** | `{pdf_info['total_pdfs']}개 PDF` | {pdf_info['timestamp']} |",
         f"| **미색인 원문 PDF 목록** | {unindexed_str} | {pdf_info['timestamp']} |",
