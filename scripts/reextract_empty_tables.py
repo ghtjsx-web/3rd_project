@@ -20,6 +20,9 @@ TABLE인데 table_data가 비어 있는 요소를 지금 파이프라인(PIPELIN
     # 특정 요소만
     docker compose run --rm -e QDRANT_COLLECTION=figindex_test_ryu pipeline \\
         python /scripts/reextract_empty_tables.py --element-id fig-60589bd4757d
+    # Gemini를 부르지 않고, 직전 재추출 때 캐시에 저장된 응답으로 후처리만 다시 (--model-name은 그 응답을 낸 모델)
+    docker compose run --rm -e QDRANT_COLLECTION=figindex_test_ryu pipeline \\
+        python /scripts/reextract_empty_tables.py --reuse-cache --model-name gemini-3.5-flash-lite
 """
 import argparse
 import csv
@@ -152,7 +155,15 @@ def main() -> None:
     parser.add_argument("--source", default="figindex_elements_v2", help="읽기만 하는 원본 컬렉션")
     parser.add_argument("--limit", type=int, help="앞에서부터 N개만")
     parser.add_argument("--element-id", action="append", help="특정 요소만 (여러 번 지정 가능)")
+    parser.add_argument("--reuse-cache", action="store_true",
+                        help="Gemini를 부르지 않고 캐시의 응답으로 후처리만 다시 한다. 캐시에 없는 요소는 건너뜀")
+    parser.add_argument("--model-name", help="--reuse-cache 때 기록할 모델 이름 (캐시 응답을 낸 모델)")
     args = parser.parse_args()
+    if args.model_name and not args.reuse_cache:
+        raise SystemExit("--model-name은 --reuse-cache와 함께만 씁니다.")
+    if args.model_name:
+        # extractor는 캐시를 쓴 경우 VISION_MODEL 값을 model_name으로 기록한다
+        os.environ["VISION_MODEL"] = args.model_name
 
     target = os.getenv("QDRANT_COLLECTION", "")
     check_target_collection(target)
@@ -202,7 +213,10 @@ def main() -> None:
                         doc[old["page_number"] - 1], (y0, x0, y1, x1))
 
             img_hash = extractor.get_image_hash(crop_path)
-            if extractor.cache.pop(img_hash, None) is not None:
+            if args.reuse_cache:
+                if img_hash not in extractor.cache:
+                    raise LookupError("캐시에 응답이 없어 건너뜀 (--reuse-cache는 Gemini를 부르지 않음)")
+            elif extractor.cache.pop(img_hash, None) is not None:
                 extractor._save_cache()
 
             element = extractor.analyze_crop(
@@ -221,7 +235,8 @@ def main() -> None:
             )
             extra = dict(old.get("extra_metadata") or {})
             extra.update(new.extra_metadata or {})
-            extra["reextract_note"] = f"{stamp} 빈 표 재추출 (이전 pipeline {old.get('pipeline_version')})"
+            how = "캐시 응답으로 후처리만 다시" if args.reuse_cache else "Gemini 재호출"
+            extra["reextract_note"] = f"{stamp} 빈 표 재추출, {how} (이전 pipeline {old.get('pipeline_version')})"
             new.extra_metadata = extra
             orchestrator.index_element_to_qdrant(new)
 
