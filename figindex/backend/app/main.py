@@ -1,4 +1,6 @@
 import os
+import csv
+import re
 import math
 import hashlib
 import time
@@ -26,7 +28,9 @@ from shared.schemas import (
     ElementSearchPayload,
     TableData,
     ComparisonResult,
+    EntityEntry,
     CONFIDENCE_THRESHOLD,
+    ENTITY_DICTIONARY_PATH,
 )
 from shared.compare import available_metrics, build_comparison
 from shared.normalize import METRIC_ALIASES
@@ -393,6 +397,58 @@ def ensure_payload_indexes(client: QdrantClient) -> None:
         _PAYLOAD_INDEXES_ENSURED = True
 
 
+@lru_cache(maxsize=1)
+def load_entity_dictionary() -> List[EntityEntry]:
+    """엔티티 사전(docs/glossary.md 10절)을 읽는다. 파일이 없으면 빈 목록 → 엔티티 필터 없이 검색."""
+    if not os.path.exists(ENTITY_DICTIONARY_PATH):
+        print(f"[Warn] 엔티티 사전 없음: {ENTITY_DICTIONARY_PATH}")
+        return []
+    with open(ENTITY_DICTIONARY_PATH, encoding="utf-8", newline="") as f:
+        return [
+            EntityEntry(
+                entity_name=row["entity_name"].strip(),
+                entity_type=row["entity_type"].strip(),
+                aliases=[a.strip() for a in (row.get("aliases") or "").split("|") if a.strip()],
+                ticker=(row.get("ticker") or "").strip() or None,
+            )
+            for row in csv.DictReader(f)
+        ]
+
+
+def _contains_name(query: str, name: str) -> bool:
+    """영문·숫자 이름(GS, HBM 등)은 단어 경계가 있을 때만, 한글 이름은 부분 문자열로 찾는다.
+
+    ponytail: 영문 뒤 한글은 경계로 보지 않아 'KDI의'는 잡히지만 'GS리테일'도 GS로 잡힘.
+    사전에 없는 회사가 문제 되면 형태소 분석(Kiwi)으로 바꾼다.
+    """
+    if re.fullmatch(r"[A-Za-z0-9&.\- ]+", name):
+        return re.search(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])", query, re.IGNORECASE) is not None
+    return name in query
+
+
+def match_entities(query: str) -> List[EntityEntry]:
+    """검색어에 나온 별칭·대표 이름을 사전의 entity_name으로 바꾼다 ("하이닉스" → SK하이닉스)."""
+    return [
+        entry for entry in load_entity_dictionary()
+        if any(_contains_name(query, name) for name in [entry.entity_name, *entry.aliases])
+    ]
+
+
+def build_entity_filter(entries: List[EntityEntry]) -> Optional[qmodels.Filter]:
+    """찾은 엔티티 중 하나라도 entities 또는 extra_metadata.target에 있는 요소만 남기는 조건.
+
+    저장 쪽 entities가 아직 entity_name으로 통일되지 않아 별칭까지 같이 비교한다
+    (예: target에 'CJENM', 'KTnG'). 저장 쪽이 통일되면 entity_name만 남기면 된다.
+    """
+    if not entries:
+        return None
+    names = sorted({name for e in entries for name in [e.entity_name, *e.aliases]})
+    return qmodels.Filter(should=[
+        qmodels.FieldCondition(key="entities", match=qmodels.MatchAny(any=names)),
+        qmodels.FieldCondition(key="extra_metadata.target", match=qmodels.MatchAny(any=names)),
+    ])
+
+
 @app.get("/api/elements", response_model=List[ElementSearchPayload])
 def get_elements(
     query: Optional[str] = Query(None, description="자연어 문장 검색어 (Qdrant 시맨틱 벡터 검색)"),
@@ -465,15 +521,25 @@ def get_elements(
 
     if query and query.strip():
         query_vector = get_dense_query_embedding(query.strip())
+        entity_filter = build_entity_filter(match_entities(query.strip()))
         with qdrant_call_guard():
             ensure_payload_indexes(client)
             search_response = client.query_points(
                 collection_name=QDRANT_COLLECTION,
                 query=query_vector,
                 using="dense",
-                query_filter=query_filter,
+                query_filter=qmodels.Filter(must=[*must_filters, entity_filter]) if entity_filter else query_filter,
                 limit=limit
             )
+            # 엔티티 조건으로 하나도 안 나오면(저장 쪽 entities 누락 등) 엔티티 조건 없이 다시 찾는다
+            if entity_filter and not search_response.points:
+                search_response = client.query_points(
+                    collection_name=QDRANT_COLLECTION,
+                    query=query_vector,
+                    using="dense",
+                    query_filter=query_filter,
+                    limit=limit
+                )
         for hit in search_response.points:
             if hit.payload:
                 try:
