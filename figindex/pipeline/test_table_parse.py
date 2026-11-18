@@ -6,7 +6,7 @@ PIPELINE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PIPELINE_DIR))
 sys.path.insert(0, str(PIPELINE_DIR.parent))
 
-from table_parse import coerce_table_data, is_empty_table_payload  # noqa: E402
+from table_parse import coerce_table_data, is_empty_table_payload, parse_cell_value  # noqa: E402
 from shared.schemas import ElementType  # noqa: E402
 
 
@@ -50,3 +50,32 @@ def test_is_empty_table_payload():
     assert not is_empty_table_payload({"element_type": ElementType.TABLE.value,
                                        "table_data": {"columns": ["a"], "rows": [{"a": 1}]}})
     assert not is_empty_table_payload({"element_type": ElementType.CHART.value, "table_data": None})
+
+
+def test_parse_cell_value_glossary_rules():
+    assert parse_cell_value("1,234") == (1234, False)
+    assert parse_cell_value("1,202.2") == (1202.2, False)
+    assert parse_cell_value("△1.2") == (-1.2, False)
+    assert parse_cell_value("(1.2)") == (-1.2, False)
+    assert parse_cell_value("-12.5") == (-12.5, False)
+    assert parse_cell_value("59.7%") == (59.7, True)
+    assert parse_cell_value("-") == ("-", False)
+    assert parse_cell_value("n/a") == ("n/a", False)
+    assert parse_cell_value(None) == (None, False)
+    assert parse_cell_value(18.8) == (18.8, False)
+
+
+def test_reextracted_cosmax_strings_become_numbers():
+    # 시험 컬렉션 재추출 결과에서 실제로 받은 형태 (숫자가 문자열, 쉼표·% 포함)
+    label = "(십억원, 천주, 원, %)"
+    raw = {"columns": [label, "계산", "비고"],
+           "rows": [{label: "EPS(원)", "계산": "22,091", "비고": ""},
+                    {label: "상승여력 (%)", "계산": "59.7%", "비고": ""},
+                    {label: "Target PER(배)", "계산": "18.8", "비고": ""}],
+           "unit": "십억원, 천주, 원, %", "period_labels": []}
+    table, note = coerce_table_data(raw)
+    assert table is not None, note
+    assert [r["계산"] for r in table.rows] == [22091, 59.7, 18.8]
+    assert table.rows[0][label] == "EPS(원)" and table.rows[0]["비고"] == ""
+    assert table.unit_for("상승여력 (%)", "계산") == "%"
+    assert "숫자로 바꾼 칸 3개" in note

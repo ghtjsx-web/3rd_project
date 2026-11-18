@@ -389,7 +389,9 @@ class MultimodalExtractor:
             or f"도표 p.{page_number}"
         )
 
-        model_name = os.getenv("VISION_MODEL", getattr(self, "primary_model", "gemini-3.8-flash"))
+        # 실제로 응답한 모델을 기록한다 (503 등으로 다른 모델로 바뀐 경우 포함). 캐시를 쓴 경우만 설정값을 남긴다.
+        configured_model = os.getenv("VISION_MODEL", getattr(self, "primary_model", "gemini-3.8-flash"))
+        model_name = used_vision_model if used_vision_model and used_vision_model != "cache" else configured_model
         signals_obj = eval_result.get("signals")
         if not isinstance(signals_obj, ConfidenceSignals):
             signals_obj = ConfidenceSignals()
