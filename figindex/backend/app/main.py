@@ -29,6 +29,7 @@ from shared.schemas import (
     TableData,
     ComparisonResult,
     EntityEntry,
+    EntityType,
     CONFIDENCE_THRESHOLD,
     ENTITY_DICTIONARY_PATH,
 )
@@ -558,7 +559,11 @@ def get_elements(
     if query and query.strip():
         query_vector = get_dense_query_embedding(query.strip())
         sparse_vector = get_sparse_query_vector(query.strip())
-        entity_filter = build_entity_filter(match_entities(query.strip()))
+        # 기업만 필터로 건다. 기관·제품은 저장 쪽 entities가 entity_name으로 통일되지 않아
+        # (예: KDI 요소의 entities가 'KDIEconPolicy') 정답을 막는다. 통일되면 이 조건을 뺀다.
+        entity_filter = build_entity_filter(
+            [e for e in match_entities(query.strip()) if e.entity_type == EntityType.COMPANY]
+        )
         with qdrant_call_guard():
             ensure_payload_indexes(client)
             search_response = hybrid_query(
