@@ -340,15 +340,16 @@ class StateChecker:
         branch = branch_proc.stdout.strip() or "HEAD(detached)"
 
         # 변경 파일 목록 추출 (base 대비 diff + untracked)
+        # core.quotepath=false: 한글 파일명을 "\354..." 형태로 감싸지 않고 그대로 받는다
         diff_proc = subprocess.run(
-            ["git", "diff", "--name-only", self.base],
+            ["git", "-c", "core.quotepath=false", "diff", "--name-only", self.base],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             encoding="utf-8"
         )
         untracked_proc = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
+            ["git", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
