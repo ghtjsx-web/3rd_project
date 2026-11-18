@@ -27,6 +27,7 @@ sys.path.insert(0, str(REPO_ROOT / "figindex"))
 
 try:
     from diagnose_empty_tables import is_empty_table, scroll_all
+    from shared.schemas import TableData
 except ImportError as e:
     sys.exit(f"모듈을 불러오지 못했습니다: {e}\n'pip install pydantic' 후, 저장소 루트에서 실행해 주세요.")
 
@@ -50,6 +51,22 @@ def describe_table(value: Any) -> str:
                 f"rows {len(rows) if isinstance(rows, list) else type(rows).__name__}개, "
                 f"키 {sorted(value.keys())})")
     return f"{type(value).__name__}: {json.dumps(value, ensure_ascii=False)[:120]}"
+
+
+def table_validation_error(value: Any) -> str:
+    """캐시의 table_data가 TableData 검증을 통과하면 빈 문자열, 아니면 오류와 행 키 불일치 수."""
+    if not isinstance(value, dict):
+        return ""
+    try:
+        TableData(**value)
+        error = ""
+    except Exception as e:
+        error = " / ".join(line.strip() for line in str(e).splitlines()[:3])[:200]
+    columns = set(map(str, value.get("columns") or []))
+    rows = value.get("rows") or []
+    bad = sum(1 for r in rows if not isinstance(r, dict) or set(map(str, r.keys())) != columns)
+    note = f"행 키가 columns와 다른 행 {bad}/{len(rows)}개" if bad else "행 키 일치"
+    return f"{error or '검증 통과'} ({note})"
 
 
 def main() -> None:
@@ -90,6 +107,8 @@ def main() -> None:
         print(f"  캐시 element_type: {entry.get('element_type')}")
         print(f"  캐시 caption: {str(entry.get('caption', ''))[:80]}")
         print(f"  캐시 table_data: {describe_table(entry.get('table_data'))}")
+        if isinstance(entry.get("table_data"), dict):
+            print(f"  TableData 검증: {table_validation_error(entry.get('table_data'))}")
 
 
 if __name__ == "__main__":
