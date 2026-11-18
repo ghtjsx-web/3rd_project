@@ -6,11 +6,11 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 추출 품질 정리(빈 표·메타데이터) 완료, main·ryu 통합 완료, PDF 업로드(팀원1) 병합. 업로드 문서의 메타데이터 자동 추출 보강 단계
-2. **방금 한 일과 결과 (2026-11-18)**: 빈 표 82건 정리, '요소 아님' 17건 반려, 종목명 entity_name 보정, ryu↔main 통합, 팀원1 업로드(#11)·팀원2 검색 필터·사전(#30, #31) 병합. 파일명이 `RPT_날짜_종목_증권사` 형식이 아니어도 표지(종목코드·사전 이름·증권사·날짜)에서 메타데이터를 채우도록 orchestrator 수정, `update_status.py`가 반려를 따로 셈
-3. **다음 할 일**: PIPELINE_VERSION 올릴지 결정(표지 메타데이터 변경), 팀원2 P@5 재측정(반려 후), 오분류 빨간 줄 7건 재판정(팀원3), 목차 페이지 거르기, 업로드-파이프라인 연결 전 기존 PDF 141개 중복 판정 보강(팀원1)
+1. **현재 단계**: 11-18 마감. 데이터 정리·통합 완료, 업로드(진행률·ReviewLog·기존 PDF 등록)와 검색 측정까지 끝남. 다음은 업로드→파이프라인 연결과 수치 정답셋 측정
+2. **방금 한 일과 결과 (2026-11-18)**: 빈 표 정리·'요소 아님' 17건 반려·종목명 사전 기준 통일(거래소 종목명, #34 포함) 후 새 zip 배포. 표지 기반 메타데이터(#35), 업로드 진행률·ReviewLog·기존 PDF 등록(#36) 병합. 검색 정식 측정 P@5 0.900·응답 0.314초. 오분류 점검 88건 완료
+3. **다음 할 일 (11-19)**: 수치표 30개를 v2 요소와 대조하고 팀원3용 예시 만들기 → `cell_accuracy`·`table_valid_rate` 계산 스크립트, PIPELINE_VERSION 결정, 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토. 팀원2는 11-19 결근
 4. **막힌 것**: 없음
-5. **팀장 결정 대기**: ① PIPELINE_VERSION 0.1.1 → 0.1.2 (메타데이터 추출 로직 변경) ② `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지 ③ 사전 이름 거래소 공식명 기준 적용(`CMTX`→씨엠티엑스, `CS윈드`→씨에스윈드, 팀원2에게 요청함)
+5. **팀장 결정 대기**: ① PIPELINE_VERSION 0.1.1 → 0.1.2 (표지 메타데이터, #35) ② `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
 ---
 
@@ -37,25 +37,25 @@
 | └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-18 16:38:11 KST |
 <!-- AUTO:END -->
 
-수동 기록 (2026-11-18)
-- v2 표 데이터 빈 요소: 82건 → 6건, 이 6건 중 5건은 목차·장 제목이라 반려, 1건(BERT p.8)은 검수대기
-- v2 반려(REJECTED): 17건 (오분류 점검 '요소 아님', 백업 `reject_backup_*.json`)
-- 검색 (팀원2, 새 zip 기준·반려 전): P@5 0.900, 평균 응답 0.342초(첫 요청 1.76초 포함) → 반려 후 재측정 요청
-- 엔티티 사전 `figindex/data/entity_dictionary.csv`: 65개 (종목 50, 기관 9, 제품 6)
-- 오분류 점검 시트: 88건 중 82건 판정 (맞음 49, 틀림 33), 빨간 줄(상세 화면 에러) 7건 재판정 대기
+수동 기록 (2026-11-18 18:10)
+- v2 618건: 승인 593, 검수대기 8, 반려 17 (반려는 오분류 점검 '요소 아님', 백업 `reject_backup_*.json`)
+- 검색 정식 측정 (새 zip, `eval_search.py`, 검색어 20개): `precision_at_5` 0.900, `search_latency_sec` 0.314 (첫 실행, 1번 검색어 1.66초 포함). 기업명+지표 검색(1~3번)은 0.6·0.5·0.4로 가장 낮음
+- 엔티티 사전 `figindex/data/entity_dictionary.csv`: 65개 (종목 50, 기관 9, 제품 6), 종목은 한국거래소 종목명 기준
+- 오분류 점검 88건 완료: 맞음 56, 틀림 32 (요소 아님 17, 잘림 13, 캡션 3, 노이즈 1, 유형 0)
+- 수치 정답셋: 정답셋 작업 시트 '수치표' 탭에 표 30개(T01~T30), 셀 약 800개. 아직 v2 요소 ID와 연결 전
+- 업로드 DB `data/metadata.sqlite3`: 기존 PDF 141개 등록 (PC마다 `docker compose exec backend python -m app.register_existing_pdfs` 1회)
 - 상태 검사기 (11-18 16:00, Docker 포함): PASS=7, WARN=1(A6), FAIL=0, 단위 테스트 200건 통과
-
 ---
 
 ## 2. 최근 작업 로그 (Recent Logs - 최근 5건)
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-18 18:06** | 검색 정식 측정 (팀원2 결근 대신 팀장) | 없음 | `python scripts/eval_search.py` | P@5 0.900, 응답 0.314초(첫 실행)·0.024초(캐시) | **PASS** |
+| **11-18 17:46** | 팀원1 진행률·ReviewLog·기존 PDF 등록(#36) 병합, 거래소 종목명(#34) 재정규화 | `backend/app/upload_store.py` 등, (데이터) v2 16포인트 | `python -m app.register_existing_pdfs`, `fix_metadata_from_filename.py` | 기존 PDF 141개 등록, 씨엠티엑스 5·씨에스윈드 5·LIG디펜스앤에어로스페이스 6 | **PASS** |
 | **11-18 17:30** | 업로드 PDF 이름이 형식과 달라도 표지에서 종목·증권사·발행일 채우기, 현황서 반려 건수 분리 | `pipeline/orchestrator.py`, `pipeline/test_cover_metadata.py`, `scripts/update_status.py` | `pytest pipeline/test_cover_metadata.py pipeline/test_metadata_generalization.py` | 새 테스트 7건·기존 메타데이터 테스트 통과 | **PASS** |
 | **11-18 16:57** | 팀원1 PDF 묶음 업로드(#11) 병합, main을 ryu에 합침 | `backend/app/main.py`, `backend/app/upload_store.py`, `frontend/app/components/UploadPanel.tsx` 등 | 업로드 저장 로직 직접 시험 | 처음 등록·중복·같은 이름 충돌·묶음 내 중복 5가지 기대대로 | **PASS** |
 | **11-18 16:40** | 비교 가능성 점검의 종목명 하드코딩 제거 (사전만 사용) | `pipeline/analyze_comparability.py`, `pipeline/test_analyze_comparability_entity.py` | `pytest pipeline/test_analyze_comparability_entity.py` | 3건 통과, 하드코딩 맵 2개 삭제(종목 25·별칭 7) | **PASS** |
-| **11-18 16:34** | 사전 공식명 반영(#31) 후 종목명 재보정 | (데이터) v2 12포인트 | `python scripts/fix_metadata_from_filename.py` | LNF→엘앤에프 7, TLB→티엘비 5, 재실행 0건 | **PASS** |
-| **11-18 16:30** | 오분류 '요소 아님' 반려 | (데이터) v2 17포인트 | `reject_toc_elements.ps1 -Apply` (`POST /api/review/{id}` REJECT) | 승인 12·검수대기 5 → 반려 17 | **PASS** |
 
 ---
 
@@ -106,10 +106,10 @@
 | **오분류 '잘림'(제목·단위·주석) 다수** | 크롭(팀원4) | 열림 | 오분류 시트 틀림 33건 중 잘림 14건 안팎. 크롭 여백 비교 자료로 사용 |
 | **비교 응답 모델·MetricType의 schemas.py 이전** | 백엔드/스키마 | 결정 대기 | check_state A6 경고 원인. 옮길 때 `match_status` 문자열도 Enum으로 |
 | **엔티티 정규화 (AGENTS.md 5절)** | 파이프라인 | 일부 완료 | 문서 종목명(target)·`analyze_comparability.py`는 사전 기준으로 맞춤. 색인 시 entities 전체를 사전으로 바꾸는 처리는 아직 (사전에 없는 값 345종, 대부분 일반 단어·증권사명) |
-| **사전 이름 기준 (CMTX, CS윈드)** | 검색(팀원2) | 결정 대기 | 거래소 공식명 기준이면 씨엠티엑스·씨에스윈드로 바꾸고 `fix_metadata_from_filename.py` 다시 실행 |
-| **검색 지표 재측정 (반려 후)** | 검색(팀원2) | 요청 예정 | 반려 전 P@5 0.900 |
-| **오분류 빨간 줄 7건** | 정답셋(팀원3) | 재판정 대기 | 63·64·66·67·68·82·84번 상세 화면 에러 → 새 zip으로 다시 확인. 81번 '상단 노이즈'는 틀림[노이즈]로 수정 요청 |
-| **업로드 중복 판정에 기존 PDF 141개 빠짐** | 업로드(팀원1) | 요청함 | `metadata.sqlite3`만 봄. 기존 PDF 등록 또는 Qdrant 대조 필요. 테스트 추가, 크기 제한·인증은 참고 |
+| **사전 이름 기준** | 검색(팀원2) | 해결 | 한국거래소 종목명 기준으로 통일(#34), v2 재정규화 완료 |
+| **기업명+지표 검색 약함** | 검색(팀원2) | 열림 | 정식 측정에서 1~3번(SK하이닉스·삼성전자·카카오)이 0.4~0.6. 서비스 핵심 시나리오라 다음 주 검색 개선 우선순위 |
+| **오분류 점검** | 정답셋(팀원3) | 해결 | 88건 완료. 다음은 수치표 30개 요소 ID 연결 (11-19 예시 제공) |
+| **업로드 DB의 기존 PDF doc_id·상태** | 업로드(팀원1) | 요청함 | 기존 PDF 등록은 됨(#36). doc_id를 Qdrant와 맞추기, 미색인 5개는 UPLOADED로 등록 요청 |
 | **업로드 → 파이프라인 연결** | 팀장·팀원1 | 열림 | 연결 시 표지 기반 메타데이터 사용. 증권사 목록은 아직 코드(`BROKER_ALIASES`)에 있음 → 사전으로 옮길지 검토 |
 | **KB금융·우리금융지주 도표 0개** | 파이프라인 | 열림 | 텍스트 중심 리포트 |
 | **CAP_LIMIT 문서 재색인 실행** | 파이프라인 | 대기 | 승인된 23건 |
@@ -155,7 +155,7 @@
 
 ## 8. 로드맵 (Roadmap)
 
-- **이번 주 (~11/20)**: 금요일 배포(PR #11 포함), 오분류 빨간 줄 재판정, 검색 재측정, 사전 이름 기준 결정.
+- **이번 주 (~11/20)**: 금요일 배포(ryu → main 포함), 수치 정답셋 연결·측정 시작, 업로드→파이프라인 연결 설계, PIPELINE_VERSION 결정.
 - **11/23~27**: 비교 엔진 구현·정리(두 엔진 역할 정리, 모델 schemas.py 이전 결정), 추출 품질 조정(목차 거르기, 색인 시 entities 전체 사전 정규화), 팀원4 합류 후 크롭(YOLO) 비교(오분류 '잘림' 사례 활용). 11/27 기능 개발 마감.
 - **11/30~12/2**: 지표 측정·버그 수정.
 - **12/3**: 시연 리허설.
