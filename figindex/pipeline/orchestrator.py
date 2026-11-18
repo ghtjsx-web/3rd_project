@@ -15,7 +15,6 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 import fitz  # PyMuPDF
-from kiwipiepy import Kiwi
 from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
@@ -29,6 +28,7 @@ from shared.schemas import (
     DocStatus,
     PIPELINE_VERSION,
 )
+from shared.sparse import build_sparse_vector
 
 try:
     from cropper import PDFCropper
@@ -334,7 +334,6 @@ class ExtractionPipelineOrchestrator:
     def __init__(self):
         self.cropper = PDFCropper()
         self.extractor = MultimodalExtractor()
-        self.kiwi = Kiwi()
 
         self.qdrant_mode = os.getenv("QDRANT_MODE", "server").lower()
         self.qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
@@ -520,15 +519,8 @@ class ExtractionPipelineOrchestrator:
         }
 
     def tokenize_korean_bm25(self, text: str) -> Dict[int, float]:
-        """Tokenize text with Kiwi and return sparse hash frequencies."""
-        tokens = self.kiwi.tokenize(text)
-        token_counts: Dict[int, float] = {}
-        valid_tags = {"NNG", "NNP", "NR", "VV", "VA", "SL"}
-        for t in tokens:
-            if t.tag in valid_tags and len(t.form) > 1:
-                token_hash = abs(hash(t.form)) % (2**31 - 1)
-                token_counts[token_hash] = token_counts.get(token_hash, 0.0) + 1.0
-        return token_counts
+        """Kiwi 토큰화 + crc32 고정 해시. 색인과 검색이 같은 토큰 번호를 쓰도록 shared.sparse에 위임한다."""
+        return build_sparse_vector(text)
 
     def get_dense_embedding(self, text: str) -> List[float]:
         """Get 1536 dim dense embedding using OpenAI text-embedding-3-small."""
