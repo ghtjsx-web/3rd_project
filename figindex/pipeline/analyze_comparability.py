@@ -140,7 +140,9 @@ def fetch_v2_points(qdrant_url: str) -> List[Dict[str, Any]]:
 # =========================================================================
 
 def load_entity_dictionary(dict_path: Path) -> Dict[str, str]:
-    """entity_dictionary.csv에서 티커/별칭 -> 대표 기업명 매핑을 로드합니다."""
+    """entity_dictionary.csv에서 티커/별칭 -> entity_name 매핑을 로드합니다.
+    이름·별칭 키는 _entity_key로 정규화한다. 종목명은 이 사전만 기준으로 한다 (AGENTS.md 5절).
+    """
     mapping: Dict[str, str] = {}
     if not dict_path.exists():
         return mapping
@@ -152,7 +154,7 @@ def load_entity_dictionary(dict_path: Path) -> Dict[str, str]:
                 name = row.get("entity_name", "").strip()
                 if not name:
                     continue
-                mapping[name] = name
+                mapping[_entity_key(name)] = name
                 ticker = row.get("ticker", "").strip()
                 if ticker:
                     mapping[ticker] = name
@@ -161,51 +163,16 @@ def load_entity_dictionary(dict_path: Path) -> Dict[str, str]:
                     for a in aliases.split("|"):
                         a_clean = a.strip()
                         if a_clean:
-                            mapping[a_clean] = name
+                            mapping[_entity_key(a_clean)] = name
     except Exception as e:
         print(f"[Warn] 엔티티 사전 로드 실패: {e}")
 
     return mapping
 
 
-# 공통 증권사 리포트 대상 기업 티커/별칭 보정 맵
-KNOWN_TICKER_MAP = {
-    "005930": "삼성전자",
-    "000660": "SK하이닉스",
-    "017670": "SK텔레콤",
-    "035720": "카카오",
-    "033780": "KT&G",
-    "035760": "CJ ENM",
-    "051910": "LG화학",
-    "002350": "넥센타이어",
-    "023530": "롯데쇼핑",
-    "089860": "롯데렌탈",
-    "020150": "롯데에너지머티리얼즈",
-    "251270": "넷마블",
-    "003230": "삼양식품",
-    "078930": "GS",
-    "388210": "CMTX",
-    "066970": "LNF",
-    "018670": "SK가스",
-    "010130": "고려아연",
-    "376300": "디어유",
-    "093520": "매커스",
-    "112610": "CS윈드",
-    "178920": "PI첨단소재",
-    "353200": "대덕전자",
-    "069960": "현대백화점",
-    "161390": "한국타이어앤테크놀로지",
-}
-
-KNOWN_NAME_ALIAS = {
-    "삼전": "삼성전자",
-    "sk텔레콤": "SK텔레콤",
-    "kakao": "카카오",
-    "ktng": "KT&G",
-    "kt&g": "KT&G",
-    "cjenm": "CJ ENM",
-    "cj enm": "CJ ENM",
-}
+def _entity_key(name: str) -> str:
+    """사전 대조용 키: 공백 제거, 대소문자 무시 (sk텔레콤 = SK텔레콤, cj enm = CJ ENM)."""
+    return re.sub(r"\s+", "", str(name)).casefold()
 
 
 def normalize_target_company(
@@ -221,15 +188,11 @@ def normalize_target_company(
     # 1. 티커 기반 매핑
     if ticker and ticker in entity_dict:
         return entity_dict[ticker], f"entity_dict(ticker={ticker})"
-    if ticker and ticker in KNOWN_TICKER_MAP:
-        return KNOWN_TICKER_MAP[ticker], f"known_ticker({ticker})"
 
-    # 2. 기업명/대상명 기반 엔티티 사전 매핑
+    # 2. 기업명/대상명 기반 엔티티 사전 매핑 (별칭 포함, 공백·대소문자 무시)
     for val, field in [(target, "target"), (company, "company")]:
-        if val and val in entity_dict:
-            return entity_dict[val], f"entity_dict({field}={val})"
-        if val and val.lower() in KNOWN_NAME_ALIAS:
-            return KNOWN_NAME_ALIAS[val.lower()], f"alias({field}={val})"
+        if val and _entity_key(val) in entity_dict:
+            return entity_dict[_entity_key(val)], f"entity_dict({field}={val})"
 
     # 3. target 우선
     if target and target.lower() != "none":
@@ -759,7 +722,7 @@ def generate_full_report(
         "## 1. 분석 1: 종목별 리포트 모임 (시연 가능성)",
         "",
         "- **분석 대상**: `doc_type == REPORT` (총 243개 요소, 47개 고유 종목)",
-        "- **종목명 정규화 기준**: `extra_metadata`의 `target` 우선 ➔ 없으면 `company` ➔ `ticker`를 엔티티 사전(`entity_dictionary.csv`) 및 표준 티커 맵으로 단일화 매핑했습니다.",
+        "- **종목명 정규화 기준**: `extra_metadata`의 `target` 우선 ➔ 없으면 `company` ➔ `ticker`를 엔티티 사전(`entity_dictionary.csv`)의 entity_name으로 단일화 매핑했습니다.",
         "",
         "### 상위 10개 종목 현황 표",
         "",
