@@ -86,7 +86,8 @@ class TestCheckStateA1(unittest.TestCase):
 
     def test_normal_files_only_passes(self):
         """4. 일반 파일만 바뀜 -> PASS"""
-        changed = {"figindex/pipeline/pdf_text.py", "figindex/pipeline/test_pdf_text.py"}
+        # 코드가 바뀌면 PROJECT_STATUS_FOR_AI.md도 함께 바뀌어야 PASS (없으면 WARN)
+        changed = {"figindex/pipeline/pdf_text.py", "PROJECT_STATUS_FOR_AI.md"}
         res = check_a1_git_scope(
             changed_files=changed,
             protected_files=self.protected_files,
