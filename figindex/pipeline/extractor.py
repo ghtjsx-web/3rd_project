@@ -23,6 +23,11 @@ from shared.schemas import (
 from shared.coords import clip_bbox, validate_bbox
 
 try:
+    from table_parse import coerce_table_data
+except ImportError:
+    from pipeline.table_parse import coerce_table_data
+
+try:
     from evaluator import ConfidenceEvaluator
 except ImportError:
     from pipeline.evaluator import ConfidenceEvaluator
@@ -294,23 +299,14 @@ class MultimodalExtractor:
         element_type = ElementType(el_type_str)
 
         # Parse structured table data
+        # null 목록 필드·행 키 불일치처럼 형식만 어긋난 표도 살린다 (table_parse.coerce_table_data)
         table_data_raw = parsed.get("table_data")
         table_data_obj = None
         if table_data_raw and isinstance(table_data_raw, dict):
-            try:
-                table_data_obj = TableData(**table_data_raw)
-            except Exception:
-                try:
-                    # unit_by_row/column 없이 재시도
-                    clean_dict = {
-                        "columns": table_data_raw.get("columns", []),
-                        "rows": table_data_raw.get("rows", []),
-                        "unit": table_data_raw.get("unit"),
-                        "period_labels": table_data_raw.get("period_labels", []),
-                    }
-                    table_data_obj = TableData(**clean_dict)
-                except Exception:
-                    is_schema_valid = False
+            table_data_obj, table_note = coerce_table_data(table_data_raw)
+            if table_data_obj is None:
+                is_schema_valid = False
+                print(f"    [TableData] {crop_path.name}: {table_note}")
 
         # Calculate confidence score
         eval_result = self.evaluator.evaluate_signals(
