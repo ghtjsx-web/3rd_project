@@ -6,11 +6,11 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 추출 품질 정리(빈 표·메타데이터) 완료, main·ryu 통합 완료. 비교 엔진 고도화와 검색·정답셋 측정 단계
-2. **방금 한 일과 결과 (2026-11-18)**: 빈 표 82건 정리(v1 복원 10건, 재추출 후 승격 66건), 오분류 점검에서 '요소 아님'(목차·장 제목·초록) 17건 반려, source_org 23건·종목명 entity_name 보정(LNF→엘앤에프, TLB→티엘비 포함), ryu를 main에 병합(#27, #28), 팀원2 검색 필터·사전 공식명(#30, #31) 병합, `analyze_comparability.py` 종목명 하드코딩 제거
-3. **다음 할 일**: 팀원2 P@5 재측정(반려 후), 오분류 빨간 줄 7건 새 데이터로 재판정(팀원3), 목차 페이지를 표로 자르지 않게 파이프라인 조건 추가
+1. **현재 단계**: 추출 품질 정리(빈 표·메타데이터) 완료, main·ryu 통합 완료, PDF 업로드(팀원1) 병합. 업로드 문서의 메타데이터 자동 추출 보강 단계
+2. **방금 한 일과 결과 (2026-11-18)**: 빈 표 82건 정리, '요소 아님' 17건 반려, 종목명 entity_name 보정, ryu↔main 통합, 팀원1 업로드(#11)·팀원2 검색 필터·사전(#30, #31) 병합. 파일명이 `RPT_날짜_종목_증권사` 형식이 아니어도 표지(종목코드·사전 이름·증권사·날짜)에서 메타데이터를 채우도록 orchestrator 수정, `update_status.py`가 반려를 따로 셈
+3. **다음 할 일**: PIPELINE_VERSION 올릴지 결정(표지 메타데이터 변경), 팀원2 P@5 재측정(반려 후), 오분류 빨간 줄 7건 재판정(팀원3), 목차 페이지 거르기, 업로드-파이프라인 연결 전 기존 PDF 141개 중복 판정 보강(팀원1)
 4. **막힌 것**: 없음
-5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지 ② 사전 이름 기준을 거래소 공식 종목명으로 할지 (남은 대상: `CMTX`→씨엠티엑스, `CS윈드`→씨에스윈드)
+5. **팀장 결정 대기**: ① PIPELINE_VERSION 0.1.1 → 0.1.2 (메타데이터 추출 로직 변경) ② `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지 ③ 사전 이름 거래소 공식명 기준 적용(`CMTX`→씨엠티엑스, `CS윈드`→씨에스윈드, 팀원2에게 요청함)
 
 ---
 
@@ -51,11 +51,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-18 17:30** | 업로드 PDF 이름이 형식과 달라도 표지에서 종목·증권사·발행일 채우기, 현황서 반려 건수 분리 | `pipeline/orchestrator.py`, `pipeline/test_cover_metadata.py`, `scripts/update_status.py` | `pytest pipeline/test_cover_metadata.py pipeline/test_metadata_generalization.py` | 새 테스트 7건·기존 메타데이터 테스트 통과 | **PASS** |
+| **11-18 16:57** | 팀원1 PDF 묶음 업로드(#11) 병합, main을 ryu에 합침 | `backend/app/main.py`, `backend/app/upload_store.py`, `frontend/app/components/UploadPanel.tsx` 등 | 업로드 저장 로직 직접 시험 | 처음 등록·중복·같은 이름 충돌·묶음 내 중복 5가지 기대대로 | **PASS** |
 | **11-18 16:40** | 비교 가능성 점검의 종목명 하드코딩 제거 (사전만 사용) | `pipeline/analyze_comparability.py`, `pipeline/test_analyze_comparability_entity.py` | `pytest pipeline/test_analyze_comparability_entity.py` | 3건 통과, 하드코딩 맵 2개 삭제(종목 25·별칭 7) | **PASS** |
 | **11-18 16:34** | 사전 공식명 반영(#31) 후 종목명 재보정 | (데이터) v2 12포인트 | `python scripts/fix_metadata_from_filename.py` | LNF→엘앤에프 7, TLB→티엘비 5, 재실행 0건 | **PASS** |
 | **11-18 16:30** | 오분류 '요소 아님' 반려 | (데이터) v2 17포인트 | `reject_toc_elements.ps1 -Apply` (`POST /api/review/{id}` REJECT) | 승인 12·검수대기 5 → 반려 17 | **PASS** |
-| **11-18 15:45** | ryu를 main에 병합 (#27, 빠진 #26은 #28), ryu를 main과 같게 맞춤 | `orchestrator.py`(충돌 해결), `backend/app/main.py`(ryu 비교 API를 `/api/compare/company`로), `test_check_state_a1.py` | `python scripts/check_state.py --quick` | main=ryu=`191e08b`, 단위 테스트 200건 통과, FAIL 0 | **PASS** |
-| **11-18 15:20** | 메타데이터 보정: 요소마다 비교, 종목명을 entity_name으로 (#25, #26) | `scripts/fix_metadata_from_filename.py`, `scripts/test_fix_metadata_per_point.py` | `python scripts/fix_metadata_from_filename.py` | 66포인트 보정(source_org 23건 포함), 재실행 dry-run 0건, 백업 2개 | **PASS** |
 
 ---
 
@@ -72,6 +72,8 @@
 9. **검색 (팀원2)**: Kiwi 형태소 + BM25 sparse + dense 하이브리드, 엔티티 사전 65개, `/api/search` 문서 유형·증권사·발행일 필터, 검색 정답셋 `figindex/data/gt/search/queries.json`, `scripts/eval_search.py`.
 10. **표 파싱 정리 (PIPELINE_VERSION 0.1.1)**: `pipeline/table_parse.py`의 `coerce_table_data`(행 키를 columns에 맞춤, 셀 숫자 변환, % 단위는 unit_by_row), `model_name`에 실제 응답 모델 기록, 빈 표 결과를 Gemini 캐시에 미리 채우지 않음.
 11. **데이터 작업 도구 (모두 dry-run 기본, 백업·되돌리기 지원)**: `reextract_empty_tables.py`(시험 컬렉션 전용), `promote_test_to_service.py`, `fix_metadata_from_filename.py`, `restore_tables_from_v1.py`, `list_review_candidates.py`, `diagnose_empty_tables.py`.
+12. **PDF 묶음 업로드 (팀원1, #11)**: `POST /api/batches`, 화면 '📄 PDF 업로드' 탭. SHA-256 `doc_hash`로 중복 판정, `data/metadata.sqlite3`에 Batch·Document 저장. 파이프라인 실행은 아직 연결 안 함.
+13. **표지 기반 메타데이터 (11-18)**: 파일명 형식이 아니면 표지에서 종목(사전 종목코드 → 사전 이름·별칭), 증권사(`BROKER_ALIASES`, '증권'·'투자' 들어간 표기만, 표지 → 마지막 페이지), 발행일(표지 → 파일명 YYYYMMDD → 끝 MMDD)을 찾음. 못 찾으면 None.
 
 ---
 
@@ -91,6 +93,7 @@
 12. **저장소 정리 (11-18)**: 병합된 PR 브랜치 자동 삭제 설정 켬. 데이터 zip에 entity_dictionary.csv를 넣지 않음(git 관리).
 13. **'요소 아님' 17건 반려 (11-18, v2 쓰기)**: 오분류 점검에서 목차·장 제목·초록으로 판정된 요소를 관리자 검수 API로 반려. 그중 12건은 오늘 승격으로 자동 승인됐던 것(확신도 0.94~0.954) → 확신도 신호가 목차를 거르지 못함.
 14. **현황서 갱신 규칙 (11-18)**: AGENTS.md 8절. ryu 작업은 현황서 전체를 다시 쓰고 `update_status.py` 실행, 팀원 브랜치는 이 파일을 고치지 않음.
+15. **업로드 파일 이름 규칙을 강제하지 않음 (11-18)**: 증권사에서 받은 이름 그대로 올려도 되도록 파이프라인이 표지에서 메타데이터를 찾는다(팀장 처리). 발행일·종목을 못 찾으면 오늘 날짜나 파일명 조각으로 채우지 않고 비워 둔다. 파일명 형식이 맞으면 결정 1대로 파일명이 우선.
 
 ---
 
@@ -106,11 +109,13 @@
 | **사전 이름 기준 (CMTX, CS윈드)** | 검색(팀원2) | 결정 대기 | 거래소 공식명 기준이면 씨엠티엑스·씨에스윈드로 바꾸고 `fix_metadata_from_filename.py` 다시 실행 |
 | **검색 지표 재측정 (반려 후)** | 검색(팀원2) | 요청 예정 | 반려 전 P@5 0.900 |
 | **오분류 빨간 줄 7건** | 정답셋(팀원3) | 재판정 대기 | 63·64·66·67·68·82·84번 상세 화면 에러 → 새 zip으로 다시 확인. 81번 '상단 노이즈'는 틀림[노이즈]로 수정 요청 |
-| **PR #11 업로드 UI·API** | 업로드(팀원1) | 검토 대기 | 금요일 배포 전 검토 |
+| **업로드 중복 판정에 기존 PDF 141개 빠짐** | 업로드(팀원1) | 요청함 | `metadata.sqlite3`만 봄. 기존 PDF 등록 또는 Qdrant 대조 필요. 테스트 추가, 크기 제한·인증은 참고 |
+| **업로드 → 파이프라인 연결** | 팀장·팀원1 | 열림 | 연결 시 표지 기반 메타데이터 사용. 증권사 목록은 아직 코드(`BROKER_ALIASES`)에 있음 → 사전으로 옮길지 검토 |
 | **KB금융·우리금융지주 도표 0개** | 파이프라인 | 열림 | 텍스트 중심 리포트 |
 | **CAP_LIMIT 문서 재색인 실행** | 파이프라인 | 대기 | 승인된 23건 |
 | **잘못된 크롭 (KT&G 유안타 p.10)** | 크롭 | 열림 | 같은 캡션에 다른 크롭 박스 |
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
+| **현황서 1절 반려 건수** | 인프라 | 해결 | `update_status.py`가 승인·검수대기·반려를 따로 셈 (전에는 반려가 검수대기에 섞임) |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (예전부터, Docker 밖 실행 시) |
 
 ---
