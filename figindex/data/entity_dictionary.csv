@@ -22,7 +22,7 @@ SK가스,COMPANY,SK Gas,018670
 대덕전자,COMPANY,Daeduck Electronics,353200
 코스메카코리아,COMPANY,COSMECCA Korea,241710
 씨어스,COMPANY,,458870
-CS윈드,COMPANY,씨에스윈드|CS Wind,112610
+씨에스윈드,COMPANY,CS윈드|CS Wind,112610
 엘앤에프,COMPANY,LNF|L&F,066970
 에코프로비엠,COMPANY,에코프로BM|EcoPro BM,247540
 PI첨단소재,COMPANY,PI Advanced Materials,178920
@@ -30,7 +30,7 @@ LG화학,COMPANY,LG Chem,051910
 한화엔진,COMPANY,Hanwha Engine,082740
 그린광학,COMPANY,Green Optics,0015G0
 넷마블,COMPANY,Netmarble,251270
-LIG디펜스,COMPANY,,079550
+LIG디펜스앤에어로스페이스,COMPANY,LIG디펜스|LIG넥스원,079550
 한국콜마,COMPANY,Kolmar Korea,161890
 롯데쇼핑,COMPANY,Lotte Shopping,023530
 삼양식품,COMPANY,Samyang Foods,003230
@@ -59,7 +59,7 @@ HBM,PRODUCT,고대역폭메모리|High Bandwidth Memory,
 GPU,PRODUCT,그래픽처리장치|Graphics Processing Unit,
 PSMA-617,PRODUCT,PSMA617,
 Brity,PRODUCT,브리티,
-CMTX,COMPANY,씨엠티엑스,388210
+씨엠티엑스,COMPANY,CMTX,388210
 티엘비,COMPANY,TLB,356860
 코스맥스,COMPANY,,192820
 삼성화재,COMPANY,,000810
