@@ -27,12 +27,14 @@ load_dotenv()
 # Import shared schemas
 from shared.schemas import (
     ElementType,
+    ReviewAction,
     ReviewStatus,
     Batch,
     Document,
     DocStatus,
     ElementSearchPayload,
     TableData,
+    ReviewLog,
     ComparisonResult,
     EntityEntry,
     EntityType,
@@ -41,7 +43,7 @@ from shared.schemas import (
 )
 from shared.compare import available_metrics, build_comparison
 from shared.normalize import METRIC_ALIASES
-from app.upload_store import persist_batch
+from app.upload_store import append_review_log, get_batch_documents, persist_batch
 
 
 @asynccontextmanager
@@ -175,6 +177,19 @@ async def create_batch(files: List[UploadFile] = File(..., description="한 번�
                 os.remove(staged_path)
             except FileNotFoundError:
                 pass
+
+
+@app.get(
+    "/api/batches/{batch_id}",
+    response_model=List[Document],
+    summary="등록 묶음의 문서 처리 상태 조회",
+    description="등록 묶음에 포함된 Document 목록을 반환합니다. 화면은 doc_status로 진행률을 계산합니다.",
+)
+def get_batch_status(batch_id: str):
+    documents = get_batch_documents(UPLOAD_DB_PATH, batch_id)
+    if documents is None:
+        raise HTTPException(status_code=404, detail=f"등록 묶음 '{batch_id}'를 찾을 수 없습니다.")
+    return documents
 
 
 # CORS Domains
@@ -905,13 +920,16 @@ def submit_review_decision(element_id: str, req: ReviewActionRequest, _auth: Non
 
         point_id = results[0].id
         payload = dict(results[0].payload)
+        before_payload = dict(payload)
 
         raw_action = req.review_action
         if not raw_action:
             raise HTTPException(status_code=400, detail="review_action은 필수입니다.")
 
-        action = raw_action.upper()
-        if action in ("APPROVE", ReviewStatus.APPROVED.value):
+        normalized_review_action = raw_action.upper()
+        review_action: ReviewAction
+        if normalized_review_action in ("APPROVE", ReviewStatus.APPROVED.value):
+            review_action = ReviewAction.APPROVE
             payload["review_status"] = ReviewStatus.APPROVED.value
             payload["confidence_score"] = 1.0  # 관리자 검수 통과 완료
             if req.element_type:
@@ -922,16 +940,55 @@ def submit_review_decision(element_id: str, req: ReviewActionRequest, _auth: Non
                 payload["summary"] = req.summary
             if req.table_data is not None:
                 payload["table_data"] = req.table_data.model_dump() if hasattr(req.table_data, "model_dump") else (req.table_data.dict() if hasattr(req.table_data, "dict") else req.table_data)
-        elif action in ("REJECT", ReviewStatus.REJECTED.value):
+        elif normalized_review_action in ("REJECT", ReviewStatus.REJECTED.value):
+            review_action = ReviewAction.REJECT
             payload["review_status"] = ReviewStatus.REJECTED.value
         else:
             raise HTTPException(status_code=400, detail="review_action은 'APPROVE' 또는 'REJECT'여야 합니다.")
+
+        review_fields = (
+            "review_status",
+            "confidence_score",
+            "element_type",
+            "caption",
+            "summary",
+            "table_data",
+        )
+        changed_fields = [
+            field_name
+            for field_name in review_fields
+            if before_payload.get(field_name) != payload.get(field_name)
+        ]
+        if review_action == ReviewAction.APPROVE and any(
+            field_name in changed_fields
+            for field_name in ("element_type", "caption", "summary", "table_data")
+        ):
+            review_action = ReviewAction.EDIT
 
         # Update in Qdrant
         client.set_payload(
             collection_name=QDRANT_COLLECTION,
             payload=payload,
             points=[point_id]
+        )
+
+    review_log = ReviewLog(
+        review_id=str(uuid.uuid4()),
+        element_id=element_id,
+        reviewer="admin",
+        review_action=review_action,
+        changed_fields=changed_fields,
+        before={field_name: before_payload.get(field_name) for field_name in changed_fields},
+        after={field_name: payload.get(field_name) for field_name in changed_fields},
+        confidence_score=float(before_payload.get("confidence_score") or 0.0),
+    )
+    try:
+        append_review_log(UPLOAD_DB_PATH, review_log)
+    except Exception as error:
+        print(f"[Error] ReviewLog 저장 실패 (element_id={element_id}): {error}")
+        raise HTTPException(
+            status_code=500,
+            detail="검수 결과는 반영됐지만 검수 기록을 저장하지 못했습니다.",
         )
 
     return ElementSearchPayload(**payload)
