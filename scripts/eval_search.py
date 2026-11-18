@@ -1,5 +1,7 @@
 """검색 평가: 검색 정답셋으로 precision_at_5, search_latency_sec를 잰다 (docs/glossary.md 11·12절).
 
+precision_at_5 = 상위 5개 중 정답 수 ÷ min(5, 그 검색어의 정답 수). 정답이 5개 미만이어도 다 찾으면 1.0
+
 사용법 (서버가 켜져 있을 때, 저장소 루트에서):
     python scripts/eval_search.py
     python scripts/eval_search.py --exclude 1 --out result.json   # 튜닝에 쓴 검색어 번호(1부터)는 빼고 채점
@@ -32,7 +34,7 @@ def evaluate(queries, base_url, exclude=()):
         relevant = set(q["relevant_element_ids"])
         hits = sum(1 for eid in top_ids if eid in relevant)
         rows.append({"no": i, "query": q["query"], "hits": hits, "relevant_count": len(relevant),
-                     "precision_at_5": hits / TOP_K, "search_latency_sec": latency, "top_ids": top_ids})
+                     "precision_at_5": hits / min(TOP_K, len(relevant)), "search_latency_sec": latency, "top_ids": top_ids})
     return {
         "precision_at_5": sum(r["precision_at_5"] for r in rows) / len(rows),
         "search_latency_sec": sum(r["search_latency_sec"] for r in rows) / len(rows),
