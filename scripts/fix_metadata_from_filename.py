@@ -188,6 +188,50 @@ def parse_rpt_filename(raw_name: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def plan_point_update(
+    payload: Dict[str, Any], file_source_org: str, file_pub_date: str, file_target: Optional[str]
+) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+    """요소 하나를 파일명 정보와 비교해 (바꿀 필드 dict 또는 None, 변경 설명 목록)을 돌려준다.
+
+    extra_metadata와 entities는 그 요소 자신의 값을 바탕으로 필요한 키만 바꾼다.
+    """
+    diff_logs: List[str] = []
+    cur_source_org = payload.get("source_org") or ""
+    cur_pub_date = str(payload.get("publish_date") or "")
+    cur_extra = payload.get("extra_metadata") or {}
+    cur_extra = cur_extra if isinstance(cur_extra, dict) else {}
+    cur_target = cur_extra.get("target") or cur_extra.get("company")
+    cur_entities = payload.get("entities") or []
+    cur_entities = list(cur_entities) if isinstance(cur_entities, list) else []
+
+    if cur_source_org != file_source_org:
+        diff_logs.append(f"source_org: '{cur_source_org}' -> '{file_source_org}'")
+    if cur_pub_date != file_pub_date:
+        diff_logs.append(f"publish_date: '{cur_pub_date}' -> '{file_pub_date}'")
+    if cur_target != file_target:
+        diff_logs.append(f"extra_metadata.target: '{cur_target}' -> '{file_target}'")
+
+    updated_entities = list(cur_entities)
+    if file_target and file_target not in updated_entities:
+        updated_entities = [file_target] + [e for e in updated_entities if e != file_target]
+        diff_logs.append(f"entities: 종목명 '{file_target}' 추가")
+    if not diff_logs:
+        return None, []
+    if file_source_org and file_source_org not in updated_entities:
+        updated_entities.append(file_source_org)
+
+    updated_extra = dict(cur_extra)
+    updated_extra["company"] = file_target
+    updated_extra["target"] = file_target
+    updated_extra["broker"] = file_source_org
+    return {
+        "source_org": file_source_org,
+        "publish_date": file_pub_date,
+        "extra_metadata": updated_extra,
+        "entities": updated_entities,
+    }, diff_logs
+
+
 def query_all_qdrant_points(qdrant_url: str, collection: str) -> List[Dict[str, Any]]:
     """Qdrant REST API scroll을 사용하여 컬렉션의 모든 포인트를 페이징 로드합니다."""
     scroll_url = f"{qdrant_url.rstrip('/')}/collections/{collection}/points/scroll"
@@ -306,82 +350,33 @@ def main() -> None:
         file_pub_date = parsed_fn["publish_date"]
         file_source_org = parsed_fn["source_org"]
         file_target = parsed_fn.get("target") or parsed_fn.get("company")
-        file_company = file_target
 
-        # 변경 대상 필드 확인
-        doc_needs_update = False
-        sample_payload = doc_points[0].get("payload") or {}
+        # 요소(포인트)마다 따로 비교하고 따로 갱신한다.
+        # 문서의 첫 요소만 비교하면 나머지 요소의 불일치를 놓치고, 첫 요소의 extra_metadata·entities를
+        # 다른 요소에 덮어써 요소별 기록(restore_note 등)이 지워진다.
+        doc_updates = []
+        for pt in doc_points:
+            payload_update, diff_logs = plan_point_update(
+                pt.get("payload") or {}, file_source_org, file_pub_date, file_target
+            )
+            if payload_update:
+                doc_updates.append((pt, payload_update, diff_logs))
 
-        cur_source_org = sample_payload.get("source_org") or ""
-        cur_pub_date = str(sample_payload.get("publish_date") or "")
-        cur_extra = sample_payload.get("extra_metadata") or {}
-        cur_target = (cur_extra.get("target") or cur_extra.get("company")) if isinstance(cur_extra, dict) else None
-        cur_company = cur_target
-        cur_entities = sample_payload.get("entities") or []
-
-        diff_logs = []
-
-        # 1. source_org 비교
-        if cur_source_org != file_source_org:
-            diff_logs.append(f"source_org: '{cur_source_org}' -> '{file_source_org}'")
-            doc_needs_update = True
-
-        # 2. publish_date 비교 (YYYY-MM-DD)
-        if cur_pub_date != file_pub_date:
-            diff_logs.append(f"publish_date: '{cur_pub_date}' -> '{file_pub_date}'")
-            doc_needs_update = True
-
-        # 3. extra_metadata.target/company 비교
-        if cur_target != file_target:
-            diff_logs.append(f"extra_metadata.target: '{cur_target}' -> '{file_target}'")
-            doc_needs_update = True
-
-        # 4. entities 종목명 포함 확인
-        updated_entities = list(cur_entities) if isinstance(cur_entities, list) else []
-        if file_company not in updated_entities:
-            # 종목명을 entities 맨 앞에 삽입
-            updated_entities = [file_company] + [e for e in updated_entities if e != file_company]
-            diff_logs.append(f"entities: 종목명 '{file_company}' 추가 반영")
-            doc_needs_update = True
-
-        # source_org도 entities에 없으면 추가
-        if file_source_org not in updated_entities:
-            updated_entities.append(file_source_org)
-
-        if doc_needs_update:
+        if doc_updates:
             updated_docs_cnt += 1
-            updated_points_cnt += len(doc_points)
-
-            print(f"\n[문서 변경 {updated_docs_cnt}] {doc_name} (포인트 {len(doc_points)}개)")
-            for log_item in diff_logs:
-                print(f"  * {log_item}")
-
-            # 업데이트 페이로드 구성
-            updated_extra = dict(cur_extra) if isinstance(cur_extra, dict) else {}
-            updated_extra["company"] = file_company
-            updated_extra["target"] = file_company
-            updated_extra["broker"] = file_source_org
-
-            payload_update = {
-                "source_org": file_source_org,
-                "publish_date": file_pub_date,
-                "extra_metadata": updated_extra,
-                "entities": updated_entities,
-            }
-
-            point_ids = [pt["id"] for pt in doc_points]
-
-            if not args.dry_run:
-                success = update_qdrant_payload(
-                    qdrant_url=args.qdrant_url,
-                    collection=args.collection,
-                    point_ids=point_ids,
-                    payload_dict=payload_update,
-                )
-                if success:
-                    print(f"  -> [성공] set_payload 완료 ({len(point_ids)}개 포인트)")
-                else:
-                    print(f"  -> [실패] set_payload 요청 실패")
+            updated_points_cnt += len(doc_updates)
+            print(f"\n[문서 변경 {updated_docs_cnt}] {doc_name} (포인트 {len(doc_updates)}/{len(doc_points)}개)")
+            for pt, payload_update, diff_logs in doc_updates:
+                eid = (pt.get("payload") or {}).get("element_id", pt.get("id"))
+                print(f"  - {eid}: " + "; ".join(diff_logs))
+                if not args.dry_run:
+                    success = update_qdrant_payload(
+                        qdrant_url=args.qdrant_url,
+                        collection=args.collection,
+                        point_ids=[pt["id"]],
+                        payload_dict=payload_update,
+                    )
+                    print("    -> [성공] set_payload 완료" if success else "    -> [실패] set_payload 요청 실패")
 
     print("\n" + "=" * 90)
     print(f"[요약 결과 {mode_label}]")
