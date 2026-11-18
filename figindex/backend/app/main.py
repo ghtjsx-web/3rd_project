@@ -38,7 +38,8 @@ from shared.normalize import METRIC_ALIASES
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """앱 수명주기 관리: 종료 시에만 단일 QdrantClient를 정리합니다."""
+    """앱 수명주기 관리: 시작 시 Kiwi를 미리 불러 첫 검색 지연을 없애고, 종료 시 QdrantClient를 정리합니다."""
+    get_sparse_query_vector("워밍업")
     yield
     close_qdrant_client()
 
@@ -449,6 +450,41 @@ def build_entity_filter(entries: List[EntityEntry]) -> Optional[qmodels.Filter]:
     ])
 
 
+HYBRID_PREFETCH_LIMIT = 50  # dense·sparse 각각 이만큼 후보를 뽑은 뒤 RRF로 합친다
+
+
+def get_sparse_query_vector(text: str) -> Optional[qmodels.SparseVector]:
+    """검색어 sparse 벡터. 색인과 같은 shared.sparse.build_sparse_vector를 써야 토큰 번호가 맞는다.
+    Kiwi가 없거나 토큰이 없으면 None → dense만으로 검색."""
+    try:
+        from shared.sparse import build_sparse_vector
+        tokens = build_sparse_vector(text)
+    except (ImportError, RuntimeError) as e:
+        print(f"[Warn] sparse 검색어 생성 실패, dense만 사용: {e}")
+        return None
+    if not tokens:
+        return None
+    return qmodels.SparseVector(indices=list(tokens.keys()), values=list(tokens.values()))
+
+
+def hybrid_query(client: QdrantClient, dense_vector: List[float], sparse_vector: Optional[qmodels.SparseVector],
+                 query_filter: Optional[qmodels.Filter], limit: int):
+    """dense + sparse 후보를 각각 뽑아 RRF로 합친다. sparse가 없으면 dense만."""
+    if sparse_vector is None:
+        return client.query_points(collection_name=QDRANT_COLLECTION, query=dense_vector, using="dense",
+                                   query_filter=query_filter, limit=limit)
+    prefetch_limit = max(limit, HYBRID_PREFETCH_LIMIT)
+    return client.query_points(
+        collection_name=QDRANT_COLLECTION,
+        prefetch=[
+            qmodels.Prefetch(query=dense_vector, using="dense", filter=query_filter, limit=prefetch_limit),
+            qmodels.Prefetch(query=sparse_vector, using="sparse", filter=query_filter, limit=prefetch_limit),
+        ],
+        query=qmodels.FusionQuery(fusion=qmodels.Fusion.RRF),
+        limit=limit,
+    )
+
+
 @app.get("/api/elements", response_model=List[ElementSearchPayload])
 def get_elements(
     query: Optional[str] = Query(None, description="자연어 문장 검색어 (Qdrant 시맨틱 벡터 검색)"),
@@ -521,25 +557,18 @@ def get_elements(
 
     if query and query.strip():
         query_vector = get_dense_query_embedding(query.strip())
+        sparse_vector = get_sparse_query_vector(query.strip())
         entity_filter = build_entity_filter(match_entities(query.strip()))
         with qdrant_call_guard():
             ensure_payload_indexes(client)
-            search_response = client.query_points(
-                collection_name=QDRANT_COLLECTION,
-                query=query_vector,
-                using="dense",
-                query_filter=qmodels.Filter(must=[*must_filters, entity_filter]) if entity_filter else query_filter,
-                limit=limit
+            search_response = hybrid_query(
+                client, query_vector, sparse_vector,
+                qmodels.Filter(must=[*must_filters, entity_filter]) if entity_filter else query_filter,
+                limit,
             )
             # 엔티티 조건으로 하나도 안 나오면(저장 쪽 entities 누락 등) 엔티티 조건 없이 다시 찾는다
             if entity_filter and not search_response.points:
-                search_response = client.query_points(
-                    collection_name=QDRANT_COLLECTION,
-                    query=query_vector,
-                    using="dense",
-                    query_filter=query_filter,
-                    limit=limit
-                )
+                search_response = hybrid_query(client, query_vector, sparse_vector, query_filter, limit)
         for hit in search_response.points:
             if hit.payload:
                 try:
