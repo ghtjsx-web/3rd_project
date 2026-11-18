@@ -4,6 +4,7 @@ import json
 import time
 import random
 import hashlib
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -22,9 +23,36 @@ from shared.schemas import (
 from shared.coords import clip_bbox, validate_bbox
 
 try:
+    from table_parse import coerce_table_data
+except ImportError:
+    from pipeline.table_parse import coerce_table_data
+
+try:
     from evaluator import ConfidenceEvaluator
 except ImportError:
     from pipeline.evaluator import ConfidenceEvaluator
+
+
+class GeminiRateLimiter:
+    """Gemini API 호출 속도 제한기 (공용 싱글톤: 분당 최대 14회, 최소 호출 간격 약 4.29초)."""
+
+    def __init__(self, max_rpm: float = 14.0):
+        self.min_interval = 60.0 / max_rpm
+        self.last_call_time = 0.0
+        self._lock = threading.Lock()
+
+    def wait(self):
+        with self._lock:
+            now = time.time()
+            elapsed = now - self.last_call_time
+            if elapsed < self.min_interval:
+                sleep_duration = self.min_interval - elapsed
+                time.sleep(sleep_duration)
+            self.last_call_time = time.time()
+
+
+# 공용 싱글톤 rate limiter (모든 Gemini API 호출이 공유)
+SHARED_GEMINI_RATE_LIMITER = GeminiRateLimiter(max_rpm=14.0)
 
 
 class MultimodalExtractor:
@@ -78,11 +106,9 @@ class MultimodalExtractor:
             return img_path.name
 
     def _wait_for_rate_limit(self):
-        """Enforce rate limiting delay between consecutive Gemini API requests."""
-        elapsed = time.time() - self.last_call_time
-        if elapsed < self.rate_limit_delay:
-            sleep_duration = self.rate_limit_delay - elapsed
-            time.sleep(sleep_duration)
+        """공용 싱글톤 rate limiter를 호출하여 분당 최대 14회(호출 간 ~4.29초) 한도를 엄격 준수합니다."""
+        SHARED_GEMINI_RATE_LIMITER.wait()
+        self.last_call_time = time.time()
 
     def _call_gemini_with_backoff(self, prompt: str, img: Image.Image) -> str:
         """
@@ -114,6 +140,7 @@ class MultimodalExtractor:
                     if model_name != self.primary_model:
                         print(f"  [Active Model] Promoted responsive model '{model_name}' for faster throughput.")
                         self.primary_model = model_name
+                    self.last_used_model = model_name
                     return resp.text.strip()
                 except Exception as e:
                     err_str = str(e)
@@ -209,6 +236,7 @@ class MultimodalExtractor:
         if img_hash in self.cache:
             parsed = self.cache[img_hash]
             is_schema_valid = True
+            used_vision_model = "cache"
             print(f"    [Cache Hit] Using cached AI analysis for {crop_path.name}")
         else:
             img = Image.open(str(crop_path))
@@ -220,6 +248,7 @@ class MultimodalExtractor:
             )
 
             raw_text = self._call_gemini_with_backoff(prompt, img)
+            used_vision_model = getattr(self, "last_used_model", None) or getattr(self, "primary_model", "gemini-2.5-flash")
 
             # Clean JSON fences if present
             cleaned_json = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.MULTILINE)
@@ -270,23 +299,14 @@ class MultimodalExtractor:
         element_type = ElementType(el_type_str)
 
         # Parse structured table data
+        # null 목록 필드·행 키 불일치처럼 형식만 어긋난 표도 살린다 (table_parse.coerce_table_data)
         table_data_raw = parsed.get("table_data")
         table_data_obj = None
         if table_data_raw and isinstance(table_data_raw, dict):
-            try:
-                table_data_obj = TableData(**table_data_raw)
-            except Exception:
-                try:
-                    # unit_by_row/column 없이 재시도
-                    clean_dict = {
-                        "columns": table_data_raw.get("columns", []),
-                        "rows": table_data_raw.get("rows", []),
-                        "unit": table_data_raw.get("unit"),
-                        "period_labels": table_data_raw.get("period_labels", []),
-                    }
-                    table_data_obj = TableData(**clean_dict)
-                except Exception:
-                    is_schema_valid = False
+            table_data_obj, table_note = coerce_table_data(table_data_raw)
+            if table_data_obj is None:
+                is_schema_valid = False
+                print(f"    [TableData] {crop_path.name}: {table_note}")
 
         # Calculate confidence score
         eval_result = self.evaluator.evaluate_signals(
@@ -330,6 +350,7 @@ class MultimodalExtractor:
                 "broker": source_org,
                 "industry": doc_metadata.get("industry"),
                 "analyst": doc_metadata.get("analyst"),
+                "vision_model": used_vision_model,
             }
         else:
             extra_metadata = {
@@ -338,6 +359,7 @@ class MultimodalExtractor:
                 "ticker": None,
                 "broker": None,
                 "analyst": None,
+                "vision_model": used_vision_model,
             }
 
         # BBox normalization
@@ -367,7 +389,9 @@ class MultimodalExtractor:
             or f"도표 p.{page_number}"
         )
 
-        model_name = os.getenv("VISION_MODEL", getattr(self, "primary_model", "gemini-3.8-flash"))
+        # 실제로 응답한 모델을 기록한다 (503 등으로 다른 모델로 바뀐 경우 포함). 캐시를 쓴 경우만 설정값을 남긴다.
+        configured_model = os.getenv("VISION_MODEL", getattr(self, "primary_model", "gemini-3.8-flash"))
+        model_name = used_vision_model if used_vision_model and used_vision_model != "cache" else configured_model
         signals_obj = eval_result.get("signals")
         if not isinstance(signals_obj, ConfidenceSignals):
             signals_obj = ConfidenceSignals()

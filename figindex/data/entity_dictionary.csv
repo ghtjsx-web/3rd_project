@@ -1,0 +1,66 @@
+entity_name,entity_type,aliases,ticker
+한화솔루션,COMPANY,Hanwha Solutions,009830
+넥센타이어,COMPANY,NEXEN TIRE,002350
+GS,COMPANY,,078930
+롯데에너지머티리얼즈,COMPANY,Lotte Energy Materials,020150
+한온시스템,COMPANY,Hanon Systems,018880
+스튜디오드래곤,COMPANY,Studio Dragon,253450
+CJ ENM,COMPANY,CJENM,035760
+원텍,COMPANY,,336570
+삼진식품,COMPANY,,0013V0
+카카오,COMPANY,Kakao,035720
+SK바이오팜,COMPANY,SK Biopharmaceuticals,326030
+BGF리테일,COMPANY,BGF Retail,282330
+SK가스,COMPANY,SK Gas,018670
+디어유,COMPANY,DearU,376300
+고려아연,COMPANY,Korea Zinc,010130
+교촌에프앤비,COMPANY,교촌F&B,339770
+해성디에스,COMPANY,Haesung DS,195870
+현대백화점,COMPANY,Hyundai Department Store,069960
+한국타이어앤테크놀로지,COMPANY,한국타이어|Hankook Tire & Technology,161390
+심텍,COMPANY,Simmtech,222800
+대덕전자,COMPANY,Daeduck Electronics,353200
+코스메카코리아,COMPANY,COSMECCA Korea,241710
+씨어스,COMPANY,,458870
+CS윈드,COMPANY,씨에스윈드|CS Wind,112610
+엘앤에프,COMPANY,LNF|L&F,066970
+에코프로비엠,COMPANY,에코프로BM|EcoPro BM,247540
+PI첨단소재,COMPANY,PI Advanced Materials,178920
+LG화학,COMPANY,LG Chem,051910
+한화엔진,COMPANY,Hanwha Engine,082740
+그린광학,COMPANY,Green Optics,0015G0
+넷마블,COMPANY,Netmarble,251270
+LIG디펜스,COMPANY,,079550
+한국콜마,COMPANY,Kolmar Korea,161890
+롯데쇼핑,COMPANY,Lotte Shopping,023530
+삼양식품,COMPANY,Samyang Foods,003230
+매커스,COMPANY,,093520
+롯데렌탈,COMPANY,Lotte Rental,089860
+코웨이,COMPANY,Coway,021240
+KCC,COMPANY,케이씨씨,002380
+제이브이엠,COMPANY,JVM,054950
+KT&G,COMPANY,KTnG,033780
+삼성전자,COMPANY,삼전|Samsung Electronics,005930
+SK텔레콤,COMPANY,SKT|SK Telecom,017670
+파마리서치,COMPANY,PharmaResearch,214450
+SK하이닉스,COMPANY,하이닉스|SK hynix,000660
+에너지경제연구원,ORG,KEEI,
+한국과학기술기획평가원,ORG,KISTEP,
+한국은행,ORG,한은|BOK|Bank of Korea,
+산업통상부,ORG,,
+기후에너지환경부,ORG,,
+농림축산식품부,ORG,농식품부,
+국가데이터처,ORG,,
+한국개발연구원,ORG,KDI,
+한국교육과정평가원,ORG,KICE,
+BERT,PRODUCT,Bidirectional Encoder Representations from Transformers,
+QRNG,PRODUCT,양자난수생성기|Quantum Random Number Generator,
+HBM,PRODUCT,고대역폭메모리|High Bandwidth Memory,
+GPU,PRODUCT,그래픽처리장치|Graphics Processing Unit,
+PSMA-617,PRODUCT,PSMA617,
+Brity,PRODUCT,브리티,
+CMTX,COMPANY,씨엠티엑스,388210
+티엘비,COMPANY,TLB,356860
+코스맥스,COMPANY,,192820
+삼성화재,COMPANY,,000810
+신세계,COMPANY,,004170

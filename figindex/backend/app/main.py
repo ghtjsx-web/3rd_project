@@ -1,4 +1,6 @@
 import os
+import csv
+import re
 import math
 import hashlib
 import time
@@ -32,7 +34,10 @@ from shared.schemas import (
     ElementSearchPayload,
     TableData,
     ComparisonResult,
+    EntityEntry,
+    EntityType,
     CONFIDENCE_THRESHOLD,
+    ENTITY_DICTIONARY_PATH,
 )
 from shared.compare import available_metrics, build_comparison
 from shared.normalize import METRIC_ALIASES
@@ -41,7 +46,8 @@ from app.upload_store import persist_batch
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """앱 수명주기 관리: 종료 시에만 단일 QdrantClient를 정리합니다."""
+    """앱 수명주기 관리: 시작 시 Kiwi를 미리 불러 첫 검색 지연을 없애고, 종료 시 QdrantClient를 정리합니다."""
+    get_sparse_query_vector("워밍업")
     yield
     close_qdrant_client()
 
@@ -484,6 +490,93 @@ def ensure_payload_indexes(client: QdrantClient) -> None:
         _PAYLOAD_INDEXES_ENSURED = True
 
 
+@lru_cache(maxsize=1)
+def load_entity_dictionary() -> List[EntityEntry]:
+    """엔티티 사전(docs/glossary.md 10절)을 읽는다. 파일이 없으면 빈 목록 → 엔티티 필터 없이 검색."""
+    if not os.path.exists(ENTITY_DICTIONARY_PATH):
+        print(f"[Warn] 엔티티 사전 없음: {ENTITY_DICTIONARY_PATH}")
+        return []
+    with open(ENTITY_DICTIONARY_PATH, encoding="utf-8", newline="") as f:
+        return [
+            EntityEntry(
+                entity_name=row["entity_name"].strip(),
+                entity_type=row["entity_type"].strip(),
+                aliases=[a.strip() for a in (row.get("aliases") or "").split("|") if a.strip()],
+                ticker=(row.get("ticker") or "").strip() or None,
+            )
+            for row in csv.DictReader(f)
+        ]
+
+
+def _contains_name(query: str, name: str) -> bool:
+    """영문·숫자 이름(GS, HBM 등)은 단어 경계가 있을 때만, 한글 이름은 부분 문자열로 찾는다.
+
+    ponytail: 영문 뒤 한글은 경계로 보지 않아 'KDI의'는 잡히지만 'GS리테일'도 GS로 잡힘.
+    사전에 없는 회사가 문제 되면 형태소 분석(Kiwi)으로 바꾼다.
+    """
+    if re.fullmatch(r"[A-Za-z0-9&.\- ]+", name):
+        return re.search(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])", query, re.IGNORECASE) is not None
+    return name in query
+
+
+def match_entities(query: str) -> List[EntityEntry]:
+    """검색어에 나온 별칭·대표 이름을 사전의 entity_name으로 바꾼다 ("하이닉스" → SK하이닉스)."""
+    return [
+        entry for entry in load_entity_dictionary()
+        if any(_contains_name(query, name) for name in [entry.entity_name, *entry.aliases])
+    ]
+
+
+def build_entity_filter(entries: List[EntityEntry]) -> Optional[qmodels.Filter]:
+    """찾은 엔티티 중 하나라도 entities 또는 extra_metadata.target에 있는 요소만 남기는 조건.
+
+    저장 쪽 entities가 아직 entity_name으로 통일되지 않아 별칭까지 같이 비교한다
+    (예: target에 'CJENM', 'KTnG'). 저장 쪽이 통일되면 entity_name만 남기면 된다.
+    """
+    if not entries:
+        return None
+    names = sorted({name for e in entries for name in [e.entity_name, *e.aliases]})
+    return qmodels.Filter(should=[
+        qmodels.FieldCondition(key="entities", match=qmodels.MatchAny(any=names)),
+        qmodels.FieldCondition(key="extra_metadata.target", match=qmodels.MatchAny(any=names)),
+    ])
+
+
+HYBRID_PREFETCH_LIMIT = 50  # dense·sparse 각각 이만큼 후보를 뽑은 뒤 RRF로 합친다
+
+
+def get_sparse_query_vector(text: str) -> Optional[qmodels.SparseVector]:
+    """검색어 sparse 벡터. 색인과 같은 shared.sparse.build_sparse_vector를 써야 토큰 번호가 맞는다.
+    Kiwi가 없거나 토큰이 없으면 None → dense만으로 검색."""
+    try:
+        from shared.sparse import build_sparse_vector
+        tokens = build_sparse_vector(text)
+    except (ImportError, RuntimeError) as e:
+        print(f"[Warn] sparse 검색어 생성 실패, dense만 사용: {e}")
+        return None
+    if not tokens:
+        return None
+    return qmodels.SparseVector(indices=list(tokens.keys()), values=list(tokens.values()))
+
+
+def hybrid_query(client: QdrantClient, dense_vector: List[float], sparse_vector: Optional[qmodels.SparseVector],
+                 query_filter: Optional[qmodels.Filter], limit: int):
+    """dense + sparse 후보를 각각 뽑아 RRF로 합친다. sparse가 없으면 dense만."""
+    if sparse_vector is None:
+        return client.query_points(collection_name=QDRANT_COLLECTION, query=dense_vector, using="dense",
+                                   query_filter=query_filter, limit=limit)
+    prefetch_limit = max(limit, HYBRID_PREFETCH_LIMIT)
+    return client.query_points(
+        collection_name=QDRANT_COLLECTION,
+        prefetch=[
+            qmodels.Prefetch(query=dense_vector, using="dense", filter=query_filter, limit=prefetch_limit),
+            qmodels.Prefetch(query=sparse_vector, using="sparse", filter=query_filter, limit=prefetch_limit),
+        ],
+        query=qmodels.FusionQuery(fusion=qmodels.Fusion.RRF),
+        limit=limit,
+    )
+
+
 @app.get("/api/elements", response_model=List[ElementSearchPayload])
 def get_elements(
     query: Optional[str] = Query(None, description="자연어 문장 검색어 (Qdrant 시맨틱 벡터 검색)"),
@@ -556,15 +649,22 @@ def get_elements(
 
     if query and query.strip():
         query_vector = get_dense_query_embedding(query.strip())
+        sparse_vector = get_sparse_query_vector(query.strip())
+        # 기업만 필터로 건다. 기관·제품은 저장 쪽 entities가 entity_name으로 통일되지 않아
+        # (예: KDI 요소의 entities가 'KDIEconPolicy') 정답을 막는다. 통일되면 이 조건을 뺀다.
+        entity_filter = build_entity_filter(
+            [e for e in match_entities(query.strip()) if e.entity_type == EntityType.COMPANY]
+        )
         with qdrant_call_guard():
             ensure_payload_indexes(client)
-            search_response = client.query_points(
-                collection_name=QDRANT_COLLECTION,
-                query=query_vector,
-                using="dense",
-                query_filter=query_filter,
-                limit=limit
+            search_response = hybrid_query(
+                client, query_vector, sparse_vector,
+                qmodels.Filter(must=[*must_filters, entity_filter]) if entity_filter else query_filter,
+                limit,
             )
+            # 엔티티 조건으로 하나도 안 나오면(저장 쪽 entities 누락 등) 엔티티 조건 없이 다시 찾는다
+            if entity_filter and not search_response.points:
+                search_response = hybrid_query(client, query_vector, sparse_vector, query_filter, limit)
         for hit in search_response.points:
             if hit.payload:
                 try:
@@ -722,10 +822,17 @@ def get_filter_options():
 def search_elements_endpoint(
     q: str = Query(..., description="검색 쿼리"),
     element_type: Optional[str] = None,
+    doc_type: Optional[str] = Query(None, description="문서 유형 필터 (REPORT, PUBLIC_REPORT, PAPER, IR)", examples=["REPORT"]),
+    source_org: Optional[str] = Query(None, description="출처 필터 (증권 리포트면 증권사)", examples=["대신증권"]),
+    publish_date: Optional[str] = Query(None, description="발행일 필터 (YYYY-MM-DD)", examples=["2026-10-30"]),
     limit: int = 20
 ):
     """시맨틱 하이브리드 검색 전용 엔드포인트"""
-    return get_elements(query=q, element_type=element_type, limit=limit)
+    # get_elements를 함수로 직접 부르면 FastAPI가 기본값(Query 객체)을 채우지 않으므로 나머지 인자를 None으로 넘긴다.
+    return get_elements(
+        query=q, element_type=element_type, doc_type=doc_type, source_org=source_org, target=None,
+        publish_date=publish_date, review_status=None, status=None, limit=limit,
+    )
 
 
 @app.get("/api/review/elements", response_model=List[ElementSearchPayload])
@@ -856,3 +963,68 @@ def get_element_by_id(element_id: str):
         return ElementSearchPayload(**results[0].payload)
 
     raise HTTPException(status_code=404, detail=f"도표 요소 '{element_id}'를 찾을 수 없습니다.")
+
+
+# =====================================================================
+# Document Table Comparison API
+# =====================================================================
+try:
+    from compare.metrics import MetricType
+    from compare.service import compare_company_metric
+except ImportError:
+    try:
+        from figindex.compare.metrics import MetricType
+        from figindex.compare.service import compare_company_metric
+    except ImportError:
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+        from compare.metrics import MetricType
+        from compare.service import compare_company_metric
+
+
+class MatchedDocComparison(BaseModel):
+    doc_name: str
+    source_org: Optional[str] = None
+    publish_date: Optional[str] = None
+    matched: bool
+    element_id: Optional[str] = None
+    page_number: Optional[int] = None
+    caption: Optional[str] = None
+    match_score: float = 0.0
+    second_candidate_element_id: Optional[str] = None
+    table_data: Optional[TableData] = None
+    match_status: str = "not_found"
+    match_rule: Optional[str] = None
+
+
+class AlignedComparisonRow(BaseModel):
+    row_label: str
+    raw_labels: Dict[str, str] = {}
+    values: Dict[str, Dict[str, Any]] = {}
+
+
+class CompareApiResponse(BaseModel):
+    company: str
+    metric: str
+    documents: List[MatchedDocComparison]
+    aligned_rows: List[AlignedComparisonRow]
+
+
+# /api/compare는 비교 화면이 쓰는 shared.compare 엔진(glossary 14절)이다.
+# 이 엔드포인트는 종목·지표 매칭 엔진(figindex/compare) 1차로, 경로를 나눠 함께 둔다.
+@app.get("/api/compare/company", response_model=CompareApiResponse)
+def get_compare_endpoint(
+    company: str = Query(..., description="비교 대상 기업/종목명 (예: 카카오, 삼성전자)"),
+    metric: MetricType = Query(..., description="비교 대상 지표 (TARGET_PRICE, ANNUAL_ESTIMATE, QUARTERLY_RESULT)"),
+):
+    """
+    동일 종목 리포트 그룹 내에서 같은 지표의 TABLE을 매칭하고 행을 나란히 정렬하여 반환합니다.
+    """
+    res = compare_company_metric(
+        company=company,
+        metric=metric,
+        qdrant_url=QDRANT_URL,
+        collection_name=QDRANT_COLLECTION,
+    )
+    return res
+

@@ -51,6 +51,7 @@
 ## 5. 영향받는 엔드포인트 목록
 - `GET /api/elements`: 응답 목록 모델 `List[ElementSearchPayload]`
 - `GET /api/search`: 응답 목록 모델 `List[ElementSearchPayload]`
+  - (11/18) 선택 요청 인자 `doc_type`, `source_org`, `publish_date` 추가 (`GET /api/elements`와 같은 필터, 응답 키 변경 없음)
 - `GET /api/review/elements`: 응답 목록 모델 `List[ElementSearchPayload]`
 - `GET /api/elements/{element_id}`: 단일 응답 모델 `ElementSearchPayload`
 - `POST /api/review/{element_id}`: 단일 응답 모델 `ElementSearchPayload`, 요청 모델 `ReviewActionRequest`
