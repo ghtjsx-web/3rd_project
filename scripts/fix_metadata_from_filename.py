@@ -188,13 +188,51 @@ def parse_rpt_filename(raw_name: str) -> Optional[Dict[str, Any]]:
     }
 
 
+DEFAULT_ENTITY_DICT = Path(__file__).resolve().parent.parent / "figindex" / "data" / "entity_dictionary.csv"
+
+
+def _entity_key(name: str) -> str:
+    """사전 대조용 키: 유니코드 정규화, 공백 제거, 대소문자 무시."""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFC", str(name))).casefold()
+
+
+def load_entity_names(path: Path) -> Dict[str, str]:
+    """엔티티 사전을 읽어 {정규화 키: entity_name}을 돌려준다. entity_name과 aliases 모두 키로 넣는다."""
+    import csv
+
+    mapping: Dict[str, str] = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            entity_name = (row.get("entity_name") or "").strip()
+            if not entity_name:
+                continue
+            names = [entity_name] + [a.strip() for a in (row.get("aliases") or "").split("|") if a.strip()]
+            for n in names:
+                mapping.setdefault(_entity_key(n), entity_name)
+    return mapping
+
+
+def to_entity_name(name: Optional[str], entity_names: Dict[str, str]) -> Optional[str]:
+    """파일명에서 읽은 이름(CJENM, KTnG 등)을 사전의 entity_name(CJ ENM, KT&G)으로 바꾼다. 사전에 없으면 그대로."""
+    if not name:
+        return name
+    return entity_names.get(_entity_key(name), name)
+
+
 def plan_point_update(
-    payload: Dict[str, Any], file_source_org: str, file_pub_date: str, file_target: Optional[str]
+    payload: Dict[str, Any],
+    file_source_org: str,
+    file_pub_date: str,
+    file_target: Optional[str],
+    entity_names: Optional[Dict[str, str]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], List[str]]:
     """요소 하나를 파일명 정보와 비교해 (바꿀 필드 dict 또는 None, 변경 설명 목록)을 돌려준다.
 
+    file_target은 호출 전에 entity_name으로 바꿔 둔다.
     extra_metadata와 entities는 그 요소 자신의 값을 바탕으로 필요한 키만 바꾼다.
+    entities 안에 종목의 다른 표기(KTnG 등)가 있으면 entity_name으로 바꾼다.
     """
+    entity_names = entity_names or {}
     diff_logs: List[str] = []
     cur_source_org = payload.get("source_org") or ""
     cur_pub_date = str(payload.get("publish_date") or "")
@@ -211,7 +249,14 @@ def plan_point_update(
     if cur_target != file_target:
         diff_logs.append(f"extra_metadata.target: '{cur_target}' -> '{file_target}'")
 
-    updated_entities = list(cur_entities)
+    updated_entities = []
+    for e in cur_entities:
+        mapped = to_entity_name(e, entity_names) if isinstance(e, str) else e
+        if file_target and mapped == file_target and e != file_target:
+            diff_logs.append(f"entities: '{e}' -> '{file_target}'")
+            e = file_target
+        if e not in updated_entities:
+            updated_entities.append(e)
     if file_target and file_target not in updated_entities:
         updated_entities = [file_target] + [e for e in updated_entities if e != file_target]
         diff_logs.append(f"entities: 종목명 '{file_target}' 추가")
@@ -296,6 +341,36 @@ def update_qdrant_payload(
         return False
 
 
+BACKUP_FIELDS = ("source_org", "publish_date", "extra_metadata", "entities")
+
+
+def write_backup(updates: List[Tuple[Dict[str, Any], Dict[str, Any]]], collection: str) -> Path:
+    """바꿀 포인트의 현재 값(BACKUP_FIELDS)을 JSON으로 저장한다."""
+    from datetime import datetime
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = Path(f"fix_metadata_backup_{stamp}.json")
+    rows = []
+    for pt, _ in updates:
+        payload = pt.get("payload") or {}
+        rows.append({"id": pt["id"], "before": {k: payload.get(k) for k in BACKUP_FIELDS}})
+    path.write_text(json.dumps({"collection": collection, "points": rows}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return path
+
+
+def rollback_from_backup(qdrant_url: str, collection: str, backup_path: Path) -> None:
+    """write_backup이 만든 파일로 값을 되돌린다."""
+    data = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    if data.get("collection") != collection:
+        print(f"[Error] 백업 컬렉션({data.get('collection')})과 대상 컬렉션({collection})이 다릅니다.")
+        sys.exit(1)
+    fail_cnt = 0
+    for row in data.get("points", []):
+        if not update_qdrant_payload(qdrant_url=qdrant_url, collection=collection, point_ids=[row["id"]], payload_dict=row["before"]):
+            fail_cnt += 1
+    print(f"[Info] 되돌리기 완료: {len(data.get('points', [])) - fail_cnt}개 성공, {fail_cnt}개 실패")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="RPT 파일명에서 publish_date, source_org, company를 파싱하여 Qdrant 포인트에 set_payload로 일괄 반영합니다."
@@ -317,7 +392,30 @@ def main() -> None:
         action="store_true",
         help="실제 DB에 반영하지 않고 변경 전후 로그만 출력합니다.",
     )
+    parser.add_argument(
+        "--entity-dict",
+        type=Path,
+        default=DEFAULT_ENTITY_DICT,
+        help="엔티티 사전 CSV (기본값: figindex/data/entity_dictionary.csv)",
+    )
+    parser.add_argument(
+        "--rollback",
+        type=Path,
+        default=None,
+        help="이 스크립트가 만든 백업 JSON으로 되돌립니다.",
+    )
     args = parser.parse_args()
+
+    if args.rollback:
+        rollback_from_backup(args.qdrant_url, args.collection, args.rollback)
+        return
+
+    if not args.entity_dict.exists():
+        print(f"[Error] 엔티티 사전이 없습니다: {args.entity_dict}")
+        print("        종목명을 entity_name으로 바꿀 수 없어 멈춥니다 (AGENTS.md 5절).")
+        sys.exit(1)
+    entity_names = load_entity_names(args.entity_dict)
+    print(f"[Info] 엔티티 사전: {args.entity_dict} ({len(set(entity_names.values()))}개)")
 
     mode_label = "[DRY-RUN] " if args.dry_run else ""
     print(f"[Info] {mode_label}Qdrant 연결: {args.qdrant_url} (컬렉션: {args.collection})")
@@ -342,6 +440,7 @@ def main() -> None:
     print(f"               {mode_label}파일명 기반 메타데이터 set_payload 일괄 반영 로그")
     print("=" * 90)
 
+    all_updates: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
     for doc_name, doc_points in sorted(docs_to_points.items()):
         parsed_fn = parse_rpt_filename(doc_name)
         if not parsed_fn:
@@ -349,7 +448,7 @@ def main() -> None:
 
         file_pub_date = parsed_fn["publish_date"]
         file_source_org = parsed_fn["source_org"]
-        file_target = parsed_fn.get("target") or parsed_fn.get("company")
+        file_target = to_entity_name(parsed_fn.get("target") or parsed_fn.get("company"), entity_names)
 
         # 요소(포인트)마다 따로 비교하고 따로 갱신한다.
         # 문서의 첫 요소만 비교하면 나머지 요소의 불일치를 놓치고, 첫 요소의 extra_metadata·entities를
@@ -357,7 +456,7 @@ def main() -> None:
         doc_updates = []
         for pt in doc_points:
             payload_update, diff_logs = plan_point_update(
-                pt.get("payload") or {}, file_source_org, file_pub_date, file_target
+                pt.get("payload") or {}, file_source_org, file_pub_date, file_target, entity_names
             )
             if payload_update:
                 doc_updates.append((pt, payload_update, diff_logs))
@@ -369,14 +468,24 @@ def main() -> None:
             for pt, payload_update, diff_logs in doc_updates:
                 eid = (pt.get("payload") or {}).get("element_id", pt.get("id"))
                 print(f"  - {eid}: " + "; ".join(diff_logs))
-                if not args.dry_run:
-                    success = update_qdrant_payload(
-                        qdrant_url=args.qdrant_url,
-                        collection=args.collection,
-                        point_ids=[pt["id"]],
-                        payload_dict=payload_update,
-                    )
-                    print("    -> [성공] set_payload 완료" if success else "    -> [실패] set_payload 요청 실패")
+                all_updates.append((pt, payload_update))
+
+    if all_updates and not args.dry_run:
+        backup_path = write_backup(all_updates, args.collection)
+        print(f"\n[Info] 바꾸기 전 값을 백업했습니다: {backup_path}")
+        print(f"       되돌리기: python scripts/fix_metadata_from_filename.py --rollback {backup_path}")
+        fail_cnt = 0
+        for pt, payload_update in all_updates:
+            ok = update_qdrant_payload(
+                qdrant_url=args.qdrant_url,
+                collection=args.collection,
+                point_ids=[pt["id"]],
+                payload_dict=payload_update,
+            )
+            if not ok:
+                fail_cnt += 1
+                print(f"    -> [실패] {pt['id']} set_payload 요청 실패")
+        print(f"[Info] set_payload 완료: 성공 {len(all_updates) - fail_cnt}개, 실패 {fail_cnt}개")
 
     print("\n" + "=" * 90)
     print(f"[요약 결과 {mode_label}]")
