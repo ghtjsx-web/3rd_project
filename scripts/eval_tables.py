@@ -1,7 +1,8 @@
 """표 평가: table_valid_rate, cell_accuracy를 잰다 (docs/glossary.md 12절). 읽기 전용.
 
 table_valid_rate = TABLE 요소 중 table_data가 TableData 검증을 통과하고 행이 1개 이상인 수 ÷ TABLE 요소 수
-                   (반려된 요소는 빼고 센다)
+                   (반려된 요소는 빼고 센다). 숫자를 '1,234'처럼 문자열로 저장한 표도 검증은 통과하므로,
+                   그 규모는 pipeline_version별 '저장 규칙 위반'으로 따로 보고한다.
 cell_accuracy    = 수치 정답셋의 숫자 셀 중 값이 같은 셀 수 ÷ 숫자 셀 수
                    셀은 (첫 열 행 라벨, 열 이름)으로 맞추고, 못 찾은 셀은 틀린 것으로 센다.
 
@@ -84,6 +85,22 @@ def table_is_valid(table_data: Any) -> Tuple[bool, str]:
     return True, ""
 
 
+def count_rule_violations(table_data: Any) -> int:
+    """숫자로 읽히는데 문자열로 저장된 칸 수 (첫 열 행 라벨은 뺌). 예: '1,202.2', '6.0%'"""
+    if not isinstance(table_data, dict):
+        return 0
+    columns = [str(c) for c in (table_data.get("columns") or [])]
+    count = 0
+    for row in table_data.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        for col in columns[1:]:
+            raw = row.get(col)
+            if isinstance(raw, str) and is_number(parse_cell_value(raw)[0]):
+                count += 1
+    return count
+
+
 def eval_table_valid_rate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
     tables = [
         p for p in payloads
@@ -91,18 +108,31 @@ def eval_table_valid_rate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
         and p.get("review_status") != ReviewStatus.REJECTED.value
     ]
     reasons: Dict[str, int] = defaultdict(int)
+    invalid_ids: List[str] = []
     valid = 0
+    # 저장 규칙(glossary 9절) 위반 규모: pipeline_version별로 센다
+    by_version: Dict[str, Dict[str, int]] = defaultdict(lambda: {"tables": 0, "violating_tables": 0, "violating_cells": 0})
     for p in tables:
         ok, reason = table_is_valid(p.get("table_data"))
         if ok:
             valid += 1
         else:
             reasons[reason.split(":")[0]] += 1
+            invalid_ids.append(p.get("element_id") or "")
+        stats = by_version[str(p.get("pipeline_version") or "없음")]
+        stats["tables"] += 1
+        violations = count_rule_violations(p.get("table_data"))
+        if violations:
+            stats["violating_tables"] += 1
+            stats["violating_cells"] += violations
     return {
         "table_valid_rate": valid / len(tables) if tables else 0.0,
         "table_count": len(tables),
         "valid_count": valid,
         "invalid_reasons": dict(reasons),
+        "invalid_element_ids": invalid_ids,
+        "rule_violation_tables": sum(v["violating_tables"] for v in by_version.values()),
+        "rule_violation_by_version": dict(sorted(by_version.items())),
     }
 
 
@@ -253,6 +283,12 @@ def main():
     print(f"[table_valid_rate] {valid['valid_count']}/{valid['table_count']} = {valid['table_valid_rate']:.3f} (목표 ≥ 0.90)")
     for reason, n in sorted(valid["invalid_reasons"].items(), key=lambda x: -x[1]):
         print(f"  실패 {n}건: {reason}")
+    if valid["invalid_element_ids"]:
+        print(f"  실패 요소: {', '.join(valid['invalid_element_ids'])}")
+    print(f"\n[저장 규칙 위반] 숫자를 문자열로 저장한 표 {valid['rule_violation_tables']}/{valid['table_count']}개"
+          " (table_valid_rate는 이 표들도 통과로 셈)")
+    for version, v in valid["rule_violation_by_version"].items():
+        print(f"  pipeline_version {version}: 표 {v['violating_tables']}/{v['tables']}개, 칸 {v['violating_cells']}개")
 
     print(f"\n[cell_accuracy] 연결된 표 {cells['linked_tables']}/{cells['total_tables']}개")
     for t in cells["per_table"]:

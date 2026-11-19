@@ -91,6 +91,18 @@ def test_table_valid_rate_excludes_rejected_and_counts_empty_as_invalid():
     ]
     result = eval_table_valid_rate(payloads)
     assert result["table_count"] == 3 and result["valid_count"] == 1
+    assert result["rule_violation_tables"] == 1
+
+
+def test_rule_violation_count_by_version():
+    clean = {"columns": ["구분", "2024"], "rows": [{"구분": "매출", "2024": 1202.2}, {"구분": "비고", "2024": "n/a"}]}
+    payloads = [
+        {"element_type": TABLE, "review_status": APPROVED, "pipeline_version": "0.1.0", "table_data": HANWHA_T01},
+        {"element_type": TABLE, "review_status": APPROVED, "pipeline_version": "0.1.1", "table_data": clean},
+    ]
+    by_version = eval_table_valid_rate(payloads)["rule_violation_by_version"]
+    assert by_version["0.1.0"] == {"tables": 1, "violating_tables": 1, "violating_cells": 15}
+    assert by_version["0.1.1"] == {"tables": 1, "violating_tables": 0, "violating_cells": 0}
 
 
 def test_gt_file_loads_numeric_cells_only():
