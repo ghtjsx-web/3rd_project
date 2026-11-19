@@ -6,9 +6,9 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-19 낮. 수치 정답셋 첫 측정 완료(연결 30/30), PIPELINE_VERSION 0.1.2, 예전 표 305개 저장 형태 정리, 새 데이터 zip(20261119) 배포, PR #37 병합. 다음은 업로드→파이프라인 연결 설계
-2. **방금 한 일과 결과 (2026-11-19)**: 수치표 30개 연결 완료(같은 표 14, 요소 없음 16). `cell_accuracy_extracted` 1.000(468/468), `gt_table_coverage` 0.467(14/30), 용어집 정의 `cell_accuracy` 0.592(468/790). 요소 없음 16개는 색인 한도 때문(페이지 한도 12p 밖 11개, 도표 상한 4개 5개, `diagnose_gt_coverage.py`). 채점의 행·열 이름 비교에 NFKC·따옴표 통일 추가(T23 `’`, T28 `mm²` 14칸). 시트 연결 4건 팀장 수정(T05 다른 문서 카드, T11 반려된 목차 카드, T22·T23 카드 확인)
-3. **다음 할 일 (11-19~20)**: 업로드→파이프라인 연결 설계(색인 한도·목차 거르기·요소 0개 문서 상태 포함), 팀장 PC 업로드 DB 다시 맞추기(`register_existing_pdfs`, main 합친 뒤), 금요일 배포(ryu → main). 팀원1은 검수 단축키(역할 7단계)
+1. **현재 단계**: 11-19 저녁. 업로드→파이프라인 연결의 서버 쪽 구현 완료(`feat/upload-pipeline`, PIPELINE_VERSION 0.1.3), 검수 단축키 병합(PR #38), 검수 EDIT 오기록 버그 수정, 시험 컬렉션 스크립트 병합(PR #39). 내일(11/20) 배포
+2. **방금 한 일과 결과 (2026-11-19 오후)**: 작업자로 미색인 5건 처리 성공(휴머노이드 27쪽 도표 10개 313.7초, KB금융·우리금융지주·OECD 보도자료 0개는 원래 도표 없음). 드론 논문 0개는 `Fig. N.` 캡션을 규칙이 못 읽어서였고, 캡션 위 이미지를 묶는 규칙을 넣어 후보 0 → 4(3·4·6·7쪽). pipeline 테스트 226건 통과. 목차 거르기 반려 17건 중 16건 건너뜀, 카드 있는 정답 표 14개 중 0개 건너뜀
+3. **다음 할 일 (11/20)**: 배포 순서 `ryu` → main → `feat/upload-pipeline` → main(충돌 미리 해결함). 팀장 PC에서 `register_existing_pdfs`, 검수 탭 A키 승인이 ReviewLog에 APPROVE로 남는지 확인, 팀원에게 `figindex_data_20261119.zip` 안내
 4. **막힌 것**: 없음
 5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
@@ -37,26 +37,27 @@
 | └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-19 12:03:05 KST |
 <!-- AUTO:END -->
 
-수동 기록 (2026-11-18 18:10)
+수동 기록 (2026-11-19 17:10)
 - v2 618건: 승인 593, 검수대기 8, 반려 17 (반려는 오분류 점검 '요소 아님', 백업 `reject_backup_*.json`)
-- 검색 정식 측정 (새 zip, `eval_search.py`, 검색어 20개): `precision_at_5` 0.900, `search_latency_sec` 0.314 (첫 실행, 1번 검색어 1.66초 포함). 기업명+지표 검색(1~3번)은 0.6·0.5·0.4로 가장 낮음
+- 업로드 DB `data/metadata.sqlite3` (팀장 PC, 11-19 16:20): 141건 모두 COMPLETED. 그중 5건은 작업자가 0.1.3으로 처리(`extra_metadata.element_count`: 휴머노이드 10, 나머지 0), 결과는 시험 컬렉션 `figindex_test_upload`에만 있음
+- 검색 정식 측정 (11-18, `eval_search.py`, 검색어 20개): `precision_at_5` 0.900, `search_latency_sec` 0.314. 기업명+지표 검색(1~3번)은 0.6·0.5·0.4로 가장 낮음
 - 엔티티 사전 `figindex/data/entity_dictionary.csv`: 65개 (종목 50, 기관 9, 제품 6), 종목은 한국거래소 종목명 기준
 - 오분류 점검 88건 완료: 맞음 56, 틀림 32 (요소 아님 17, 잘림 13, 캡션 3, 노이즈 1, 유형 0)
 - 표 평가 (11-19 12:00, `eval_tables.py`): `table_valid_rate` 0.998 (488/489, 실패 fig-437d261937fb 표 없음), 저장 규칙 위반 표 2/489, `cell_accuracy` 0.592 (468/790), `gt_table_coverage` 0.467 (14/30), `cell_accuracy_extracted` 1.000 (468/468)
-- 수치 정답셋: `figindex/data/gt/table/cells.csv` 표 30개(T01~T30), 숫자 셀 790개(숫자 아닌 7칸 제외). 연결 `links.csv` 30/30 (시트 '수치표_연결' 11-19 11:55)
-- 업로드 DB `data/metadata.sqlite3`: 기존 PDF 141개 등록 (PC마다 `docker compose exec backend python -m app.register_existing_pdfs` 1회)
-- 상태 검사기 (11-18 16:00, Docker 포함): PASS=7, WARN=1(A6), FAIL=0, 단위 테스트 200건 통과
+- 수치 정답셋: `figindex/data/gt/table/cells.csv` 표 30개(T01~T30), 숫자 셀 790개. 연결 `links.csv` 30/30 (같은 표 14, 요소 없음 16)
+- 테스트 (11-19 17:00, 팀장 PC Docker): pipeline 226건 통과(`feat/upload-pipeline`), 백엔드 업로드 DB 15건 통과, 검수 비교 7건 통과
+
 ---
 
 ## 2. 최근 작업 로그 (Recent Logs - 최근 5건)
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
-| **11-19 12:00** | 수치 정답셋 첫 측정, 요소 없음 원인 확인 | `scripts/eval_tables.py`, `scripts/test_eval_tables.py`, `scripts/diagnose_gt_coverage.py`, `figindex/data/gt/table/links.csv` | `diagnose_gt_coverage.py`, `eval_tables.py` | 연결 30/30, coverage 0.467, extracted 1.000, 요소 없음 16 = 페이지 한도 11 + 도표 상한 5 | **PASS** |
-| **11-19 11:47** | 팀원1 PR #37 병합 (기존 PDF doc_id를 Qdrant와 맞춤, 미색인 UPLOADED) | `backend/app/register_existing_pdfs.py`, `upload_store.py`, `test_upload_store.py` | `pytest app/test_upload_store.py` | 테스트 9건 통과, 병합 `3bd92af`, `seung` 브랜치 자동 삭제 | **PASS** |
-| **11-19 10:40** | 0.1.2 규칙으로 표 재정리 (v2 쓰기) | (데이터) v2 8포인트 | `recoerce_tables.py`, `promote_test_to_service.py --test-collection figindex_test_coerce --apply`, `eval_tables.py` | 8개 반영(코스맥스 메리츠 p.2 키 공백 + `.802` 표 7개), 92칸 숫자로, 위반 표 3 → 2 | **PASS** |
-| **11-19 10:45** | PIPELINE_VERSION 0.1.2 (#35 표지 메타데이터 + `.802` 소수 + 행 키 공백 차이) | `shared/schemas.py`, `pipeline/table_parse.py`, `pipeline/test_table_parse.py`, `scripts/recoerce_tables.py`, `scripts/test_recoerce_tables.py` | `pytest pipeline/test_table_parse.py scripts/test_recoerce_tables.py scripts/test_eval_tables.py` 등 | 163건 통과 (Docker 밖이라 openai 필요한 표지 테스트 2개 파일은 미실행) | **PASS** |
-| **11-19 10:05** | 예전 표 숫자 문자열 정리 (v2 쓰기, 팀장 승인) | `scripts/recoerce_tables.py`, `scripts/test_recoerce_tables.py`, `scripts/eval_tables.py`, (데이터) v2 297포인트 | `recoerce_tables.py`, `promote_test_to_service.py --test-collection figindex_test_coerce --apply`, `eval_tables.py` | 297개 반영, 칸 15,123개 숫자로, 위반 표 300 → 3, 확신도·검수 상태 변화 0 | **PASS** |
+| **11-19 17:00** | 도표 0개 문서 원인 확인, 논문식 `Fig. N.` 캡션 그림 찾기 (`feat/upload-pipeline`, 0.1.3에 포함) | `scripts/diagnose_zero_elements.py`, `pipeline/cropper.py`, `pipeline/test_fig_caption.py`, `pipeline/pdf_text.py`(0.8 리터럴을 정수 비교로) | `diagnose_zero_elements.py 드론자력탐사 OECD한국경제보고서`, `pytest -q` | 드론 논문 후보 0 → 4, OECD는 원문에 표·그래프 없음(정상), 226건 통과 | **PASS** |
+| **11-19 17:02** | PR #39 병합 (팀원3 시험 컬렉션 생성 스크립트) | `scripts/create_test_review_collection.py` | — | 대상 이름 검사: v1·v2·`figindex_test_upload`·원본과 같은 이름이면 중단(팀장 검토 때 `figindex_test_upload` 추가), 병합 `00ef508` | **PASS** |
+| **11-19 15:24** | 검수 승인이 EDIT로 기록되던 버그 수정 (팀원1 단축키 시험에서 발견) | `backend/app/main.py`, `backend/app/review_compare.py`, `backend/app/test_review_compare.py` | `python -m unittest backend/app/test_review_compare.py` | 7건 통과. 고치지 않은 표·빈 캡션이 형식 차이로 '바뀜'으로 잡히던 것 | **PASS** |
+| **11-19 15:14** | PR #38 병합 (팀원1 검수 탭 A/R 단축키) | `frontend/app/components/ReviewTab.tsx` | — | 34줄, 팀원1이 시험 컬렉션에서 3건 확인, 병합 `be645c2`. 같은 기능의 팀원3 `sun` 브랜치는 v2 검수를 막는 코드가 있어 병합하지 않음 | **PASS** |
+| **11-19 14:23** | 업로드→파이프라인 연결 서버 쪽 구현 (`feat/upload-pipeline`) | `shared/upload_db.py`, `pipeline/worker.py`, `pipeline/orchestrator.py`(`index_document`), `pipeline/pdf_text.py`(목차 판단), `shared/schemas.py`(0.1.3), `backend/app/main.py`(retry API), `backend/app/upload_store.py`, `docker-compose.yml`(worker), 테스트 | `pytest`, `check_toc_filter.py`, 작업자 실제 처리 | 목차 거르기 16/17·정답 표 0/14, 미색인 5건 처리, 테스트 통과 | **PASS** |
 
 ---
 
@@ -68,15 +69,20 @@
 4. **동일 종목 비교쌍 (`compare_pairs.json`)**: 10개 종목 그룹(30개 문서).
 5. **파일명 우선 메타데이터**: `parse_rpt_filename()`로 `RPT_YYYYMMDD_종목_증권사.pdf` 파싱.
 6. **Rate Limiter·원자적 색인 (`ingest_missing.py`)**: 분당 14회 공용 `GeminiRateLimiter`, 문서 단위 upsert·롤백.
-7. **비교 엔진 2종**: ① 비교 화면용 `shared/compare.py` + `GET /api/compare`, `/api/compare/metrics` (glossary 14절) ② 종목·지표 매칭 엔진 `figindex/compare/` + `GET /api/compare/company` (`MetricType` 3종).
+7. **비교 엔진 2종**: ① 비교 화면용 `shared/compare.py` + `GET /api/compare`, `/api/compare/metrics` ② 종목·지표 매칭 엔진 `figindex/compare/` + `GET /api/compare/company`.
 8. **결정론적 sparse·point id (crc32/uuid5)**, v2 sparse IDF modifier 켬.
-9. **검색 (팀원2)**: Kiwi 형태소 + BM25 sparse + dense 하이브리드, 엔티티 사전 65개, `/api/search` 문서 유형·증권사·발행일 필터, 검색 정답셋 `figindex/data/gt/search/queries.json`, `scripts/eval_search.py`.
-10. **표 파싱 정리 (PIPELINE_VERSION 0.1.1)**: `pipeline/table_parse.py`의 `coerce_table_data`(행 키를 columns에 맞춤, 셀 숫자 변환, % 단위는 unit_by_row), `model_name`에 실제 응답 모델 기록, 빈 표 결과를 Gemini 캐시에 미리 채우지 않음.
-11. **데이터 작업 도구 (모두 dry-run 기본, 백업·되돌리기 지원)**: `reextract_empty_tables.py`(시험 컬렉션 전용), `promote_test_to_service.py`, `fix_metadata_from_filename.py`, `restore_tables_from_v1.py`, `list_review_candidates.py`, `diagnose_empty_tables.py`.
-12. **PDF 묶음 업로드 (팀원1, #11)**: `POST /api/batches`, 화면 '📄 PDF 업로드' 탭. SHA-256 `doc_hash`로 중복 판정, `data/metadata.sqlite3`에 Batch·Document 저장. 파이프라인 실행은 아직 연결 안 함.
-13. **표지 기반 메타데이터 (11-18)**: 파일명 형식이 아니면 표지에서 종목(사전 종목코드 → 사전 이름·별칭), 증권사(`BROKER_ALIASES`, '증권'·'투자' 들어간 표기만, 표지 → 마지막 페이지), 발행일(표지 → 파일명 YYYYMMDD → 끝 MMDD)을 찾음. 못 찾으면 None.
-14. **표 평가 (11-19)**: `scripts/eval_tables.py`. table_valid_rate는 반려 제외 TABLE 중 TableData 검증 통과·행 1개 이상 비율. cell_accuracy는 정답 숫자 셀을 (행 라벨, 열 이름)으로 맞춰 비교하며, AI 값은 `parse_cell_value`로 정리 후 비교하고 정리 전 문자열이던 칸은 `rule_violation_cells`로 따로 셈. 행·열이 바뀐 표도 찾아 `transposed_cells`로 셈. 미연결 표는 채점하지 않음.
-15. **예전 표 저장 형태 정리 (11-19)**: `scripts/recoerce_tables.py`. v2의 표 데이터에 `coerce_table_data`를 다시 적용해 시험 컬렉션에 쓴다(Gemini·OpenAI 호출 없음, 벡터 유지). 행 수·열 이름·행 라벨·숫자 값이 같고 columns 밖 키·단위 정보가 사라지지 않는 표만 대상.
+9. **검색 (팀원2)**: Kiwi 형태소 + BM25 sparse + dense 하이브리드, 엔티티 사전 65개, `/api/search` 필터, 검색 정답셋, `scripts/eval_search.py`.
+10. **표 파싱 정리 (0.1.1~0.1.2)**: `pipeline/table_parse.py`의 `coerce_table_data`, `parse_cell_value`(`.802` 포함), `align_row_keys`(공백만 다른 행 키).
+11. **데이터 작업 도구 (dry-run 기본, 백업·되돌리기)**: `reextract_empty_tables.py`, `promote_test_to_service.py`, `fix_metadata_from_filename.py`, `restore_tables_from_v1.py`, `list_review_candidates.py`, `diagnose_empty_tables.py`, `recoerce_tables.py`.
+12. **PDF 묶음 업로드 (팀원1)**: `POST /api/batches`, 화면 '📄 PDF 업로드' 탭(여러 PDF, 상태·진행률 표시), SHA-256 `doc_hash` 중복 판정, 기존 PDF 등록(`register_existing_pdfs`, #37), ReviewLog 저장(#36).
+13. **표지 기반 메타데이터 (11-18, #35)**: 파일명 형식이 아니면 표지에서 종목·증권사·발행일을 찾음. 못 찾으면 None.
+14. **표 평가 (11-19)**: `scripts/eval_tables.py`. `table_valid_rate`, `cell_accuracy`, 보조 지표 `gt_table_coverage`·`cell_accuracy_extracted`. 행·열 이름은 NFKC·따옴표 통일 후 비교.
+15. **예전 표 저장 형태 정리 (11-19)**: 297개 + 0.1.2 후 8개.
+16. **업로드→파이프라인 연결 (11-19, `feat/upload-pipeline`)**: 백엔드는 `UPLOADED`로 등록만, pipeline 이미지의 작업자(`pipeline/worker.py`, compose 프로필 `worker`)가 업로드 DB에서 가장 오래된 `UPLOADED` 1건씩 `PROCESSING` → `COMPLETED`/`FAILED`. 함수는 `shared/upload_db.py`(`claim_next_document`, `mark_document_completed`, `mark_document_failed`, `reset_processing_documents`, `retry_document`)와 `orchestrator.index_document(pdf_path, doc_id)`. 작업자는 파일 내용(`doc_hash`)을 확인하고, 업로드 DB의 `doc_id`를 Qdrant에 그대로 씀. `POST /api/documents/{doc_id}/retry`(FAILED만, 404/409). 설계서: Claude 문서 '업로드→파이프라인 연결 설계 (팀장 지시서)'.
+17. **목차 거르기 (0.1.3)**: `pdf_text.is_toc_page` — 점선 지시줄, 목차 제목 + 쪽번호 줄, 번호 항목 위주 페이지. `scripts/check_toc_filter.py`로 확인.
+18. **논문식 캡션 (0.1.3)**: 블록 맨 앞 `Fig. N.` 캡션이면 캡션 바로 위 이미지와 위로 쌓인 칸을 묶어 CHART 후보. 기존 `그림`·`Figure` 규칙은 그대로.
+19. **검수 단축키 (팀원1, #38)**: 검수 탭 A 승인, R 반려, 입력 칸에서는 동작 안 함.
+20. **검수 변경 판단 (11-19)**: `backend/app/review_compare.py`. 저장값도 `TableData`로 맞춘 뒤 비교, 캡션 None과 ""는 같게 봄. 실제로 바뀐 경우에만 덮어쓰고 EDIT로 기록.
 
 ---
 
@@ -88,19 +94,24 @@
 4. **결정론적 sparse 토큰·고정 point id 전환 (11-17)**: v2 622건 sparse 교체(사전 스냅샷 생성).
 5. **중복 포인트 4건 삭제 (11-17)**: 이력 `data/migration/dedup_20261117.csv`.
 6. **종목 키 표준 `extra_metadata.target` (11-17)**: 빈 target 31건 백필.
-7. **비교 수치 정답셋 1차본 28건 (11-17)**: `data/eval/compare_numbers_check.csv`. 카카오 지배주주순이익 편차 29%는 증권사 추정치 차이로 시연 후보.
-8. **v2 쓰기는 시험 컬렉션을 거친다 (11-18)**: 재추출은 `figindex_test_<이름>`에만 쓰고, 미리보기 확인 후 `promote_test_to_service.py --apply`(백업 자동)로 v2에 반영. 표가 여전히 비었거나 유형이 바뀐 요소는 승격하지 않음.
-9. **종목명은 엔티티 사전의 entity_name으로 저장 (11-18)**: 파일명 표기(CJENM, KTnG, LNF, TLB)는 사전 별칭으로 대조해 `CJ ENM`, `KT&G`, `엘앤에프`, `티엘비`로 저장. 결정 7의 'KTnG' 그룹도 이제 `KT&G`. 코드에 종목명을 직접 적지 않는다.
+7. **비교 수치 정답셋 1차본 28건 (11-17)**: `data/eval/compare_numbers_check.csv`.
+8. **v2 쓰기는 시험 컬렉션을 거친다 (11-18)**: 재추출은 `figindex_test_<이름>`에만 쓰고, 미리보기 확인 후 `promote_test_to_service.py --apply`(백업 자동)로 v2에 반영.
+9. **종목명은 엔티티 사전의 entity_name으로 저장 (11-18)**.
 10. **PIPELINE_VERSION 0.1.0 → 0.1.1 (11-18)**: 표 파싱·캐시 후처리 변경.
-11. **ryu → main 통합 (11-18)**: ryu 전체를 main에 병합하고 ryu 브랜치는 계속 사용. `/api/compare`는 비교 화면용 엔진을 정식으로 두고, ryu 엔진은 `/api/compare/company`로 분리 (백엔드 `/compare` 별칭 제거).
+11. **ryu → main 통합 (11-18)**: ryu 브랜치는 계속 사용. `/api/compare`는 비교 화면용 엔진, ryu 엔진은 `/api/compare/company`.
 12. **저장소 정리 (11-18)**: 병합된 PR 브랜치 자동 삭제 설정 켬. 데이터 zip에 entity_dictionary.csv를 넣지 않음(git 관리).
-13. **'요소 아님' 17건 반려 (11-18, v2 쓰기)**: 오분류 점검에서 목차·장 제목·초록으로 판정된 요소를 관리자 검수 API로 반려. 그중 12건은 오늘 승격으로 자동 승인됐던 것(확신도 0.94~0.954) → 확신도 신호가 목차를 거르지 못함.
-14. **현황서 갱신 규칙 (11-18)**: AGENTS.md 8절. ryu 작업은 현황서 전체를 다시 쓰고 `update_status.py` 실행, 팀원 브랜치는 이 파일을 고치지 않음.
-15. **업로드 파일 이름 규칙을 강제하지 않음 (11-18)**: 증권사에서 받은 이름 그대로 올려도 되도록 파이프라인이 표지에서 메타데이터를 찾는다(팀장 처리). 발행일·종목을 못 찾으면 오늘 날짜나 파일명 조각으로 채우지 않고 비워 둔다. 파일명 형식이 맞으면 결정 1대로 파일명이 우선.
-16. **예전 표 297개 저장 형태 정리 (11-19, v2 쓰기)**: pipeline_version 0.0.0·0.1.0 표의 숫자 문자열(`'1,202.2'`, `'6.0%'`) 15,123칸을 숫자로 바꿈. pipeline_version은 그대로 둔다(추출은 예전 버전, 바뀐 것은 저장 형태뿐). 벡터는 캡션·요약·해시태그로 만들어 표 값과 무관하므로 유지. 백업은 `promote_backup_*.json`.
-17. **PIPELINE_VERSION 0.1.1 → 0.1.2 (11-19)**: 세 가지를 한 번에 묶음. ① 표지 기반 메타데이터(#35) ② `parse_cell_value`가 앞자리 0 없는 소수(`.802`)를 숫자로 읽음 ③ `align_row_keys`가 공백만 다른 행 키(`'차이(%) '` ↔ `'차이(%)'`)를 같은 열로 봄. 접미사(`'_1'`)가 붙은 키나 공백을 빼면 같아지는 열이 둘 이상인 경우는 옮기지 않음. 이미 저장된 표는 `recoerce_tables.py`로 정리하고 pipeline_version은 그대로 둔다(결정 16).
-18. **수치 정답셋 측정 방식 (11-19)**: `cell_accuracy`는 용어집 정의(카드 없는 표 포함)대로 두고, 원인을 가르는 보조 지표 2개를 함께 보고한다. `gt_table_coverage`(카드가 있는 정답 표 비율), `cell_accuracy_extracted`(카드가 있는 표만 채점). 정답 표는 추출 결과에 맞춰 바꾸지 않는다. 두 지표는 용어집 12절에 추가(팀장 요청).
-19. **색인 한도 조정과 재색인은 다음 주 (11-19)**: 요소 없음 16개의 원인은 `run_index.py` 기본값(앞 12쪽, 도표 4개)이고, 공공 보고서는 목차 페이지가 4개 자리를 먼저 차지함. 11/23~27에 ① 목차 거르기 ② 페이지 한도·도표 상한 조정 ③ 해당 13개 문서 재색인 순서로 한다. 업로드→파이프라인 연결에서도 같은 한도를 쓰므로 연결 설계에서 함께 정한다.
+13. **'요소 아님' 17건 반려 (11-18, v2 쓰기)**: 목차·장 제목·초록으로 판정된 요소. 확신도 신호가 목차를 거르지 못함.
+14. **현황서 갱신 규칙 (11-18)**: AGENTS.md 8절.
+15. **업로드 파일 이름 규칙을 강제하지 않음 (11-18)**: 표지에서 메타데이터를 찾고, 못 찾으면 비워 둔다.
+16. **예전 표 297개 저장 형태 정리 (11-19, v2 쓰기)**: 숫자 문자열 15,123칸을 숫자로. pipeline_version은 그대로.
+17. **PIPELINE_VERSION 0.1.1 → 0.1.2 (11-19)**: ① 표지 기반 메타데이터(#35) ② `.802` 소수 ③ 공백만 다른 행 키.
+18. **수치 정답셋 측정 방식 (11-19)**: `cell_accuracy`는 용어집 정의대로, 보조 지표 `gt_table_coverage`·`cell_accuracy_extracted`를 함께 보고(용어집 12절). 정답 표는 추출 결과에 맞춰 바꾸지 않는다.
+19. **색인 한도 조정과 재색인은 다음 주 (11-19)**: 요소 없음 16개의 원인은 `run_index.py` 기본값(앞 12쪽, 도표 4개). 11/25~26에 0.1.3 규칙으로 13개 문서 재색인.
+20. **업로드 처리는 별도 작업자 (11-19)**: 백엔드 `BackgroundTasks`가 아니라 pipeline 이미지의 작업자가 처리(백엔드 이미지에 PyMuPDF·Gemini 없음). 한 번에 1건, 자동 재시도 없음(실패는 [다시 시도]로만), 도표 0개도 `COMPLETED`(`element_count` 0). 작업자는 필요할 때만 켜고(`docker compose --profile worker up -d worker`), 기본 저장 컬렉션은 `figindex_test_upload`, 서비스 전환 때만 `WORKER_COLLECTION=figindex_elements_v2`. 서버·DB·파이프라인·작업자는 팀장, 팀원1은 업로드 화면만.
+21. **PIPELINE_VERSION 0.1.3 (11-19)**: 목차 거르기, 업로드 문서 전체 쪽·도표 40개, doc_id 그대로 사용, 논문식 `Fig. N.` 캡션. `Fig.` 캡션은 0.1.3이 아직 main·서비스에 쓰이지 않아 버전을 올리지 않고 0.1.3에 포함(팀장 결정). 0.1.3으로 처리된 것은 시험 컬렉션 5건뿐.
+22. **재색인은 기존 요소를 유지하고 빠진 요소만 추가 (11-19)**: `element_id`는 색인할 때마다 무작위(`cropper.py` uuid)라, 문서를 통째로 다시 색인하면 수치 정답셋 연결 14개가 깨진다. 팀원3은 재색인 뒤 '요소 없음' 16행만 다시 확인.
+23. **브랜치 정리 원칙 (11-19)**: 병합 후 지우는 것은 팀장 브랜치뿐이고, 팀원 개인 브랜치는 남긴다. 단 `sun`(v2 검수를 막는 보호 코드 포함)과 `seung-test-collection-guard`(PR #39와 중복)는 병합하지 않는다.
+24. **검수 단축키는 팀원1 버전 (11-19)**: 같은 기능이 두 벌(팀원1 #38, 팀원3 `sun`) 올라와 #38을 병합.
 
 ---
 
@@ -108,45 +119,46 @@
 
 | 문제 / 이슈 | 담당 | 상태 | 상세 내용 |
 | :--- | :---: | :---: | :--- |
-| **목차 페이지가 표로 잘림** | 파이프라인·크롭 | 열림 | 에너지경제연구원 보고서 등 목차·장 제목 17건이 TABLE로 색인됐고 확신도도 높게 나옴. 크롭·추출 단계에서 목차 페이지를 거르는 조건 필요 (지금은 17건 반려로 대응) |
-| **빈 표 1건 (BERT p.8, fig-437d261937fb)** | 정답셋 | 열림 | 실제 표가 있으나 캡션 "M th d"로 틀림, 표 데이터 없음. 검수대기 |
-| **오분류 '잘림'(제목·단위·주석) 다수** | 크롭(팀원4) | 열림 | 오분류 시트 틀림 33건 중 잘림 14건 안팎. 크롭 여백 비교 자료로 사용 |
-| **비교 응답 모델·MetricType의 schemas.py 이전** | 백엔드/스키마 | 결정 대기 | check_state A6 경고 원인. 옮길 때 `match_status` 문자열도 Enum으로 |
-| **엔티티 정규화 (AGENTS.md 5절)** | 파이프라인 | 일부 완료 | 문서 종목명(target)·`analyze_comparability.py`는 사전 기준으로 맞춤. 색인 시 entities 전체를 사전으로 바꾸는 처리는 아직 (사전에 없는 값 345종, 대부분 일반 단어·증권사명) |
-| **사전 이름 기준** | 검색(팀원2) | 해결 | 한국거래소 종목명 기준으로 통일(#34), v2 재정규화 완료 |
-| **기업명+지표 검색 약함** | 검색(팀원2) | 열림 | 정식 측정에서 1~3번(SK하이닉스·삼성전자·카카오)이 0.4~0.6. 서비스 핵심 시나리오라 다음 주 검색 개선 우선순위 |
-| **오분류 점검** | 정답셋(팀원3) | 해결 | 88건 완료 |
-| **업로드 DB의 기존 PDF doc_id·상태** | 업로드(팀원1) | 요청함 | 기존 PDF 등록은 됨(#36). doc_id를 Qdrant와 맞추기, 미색인 5개는 UPLOADED로 등록 요청 |
-| **업로드 → 파이프라인 연결** | 팀장·팀원1 | 열림 | 연결 시 표지 기반 메타데이터 사용. 증권사 목록은 아직 코드(`BROKER_ALIASES`)에 있음 → 사전으로 옮길지 검토 |
-| **KB금융·우리금융지주 도표 0개** | 파이프라인 | 열림 | 텍스트 중심 리포트 |
-| **CAP_LIMIT 문서 재색인 실행** | 파이프라인 | 대기 | 승인된 23건 |
+| **업로드 화면 남은 2가지** | 업로드(팀원1) | 열림 | 완료 문서에 `element_count`("도표 N개"/"도표 없음"), 실패 문서에 [다시 시도](`POST /api/documents/{doc_id}/retry`, 409면 사유 표시). 11/20 배포 뒤 main에서 새 브랜치, 목표 11/24 |
+| **색인 한도로 뒤쪽 표 누락** | 파이프라인 | 진행 중 | 수치 정답셋 30개 중 16개 카드 없음. 0.1.3 규칙(전체 쪽, 도표 40개, 목차 거르기)으로 11/25~26 재색인(결정 19·22). 드론 논문도 재색인 대상(지금 COMPLETED 0개라 [다시 시도] 불가) |
+| **드론 논문 `Fig.` 크롭 영역 확인** | 파이프라인 | 열림 | 후보 4개는 확인, 잘린 영역이 그림을 정확히 감싸는지는 재색인 후 카드로 확인 |
+| **HWP 변환 PDF의 이미지 조각** | 파이프라인 | 참고 | OECD 보도자료는 쪽마다 이미지 100~200개(장식·글자 조각)였고 원문에 표·그래프 없음. 이런 문서에 실제 표가 있으면 캡션 규칙으로 못 잡음 → YOLO 검토 대상 |
+| **목차 페이지가 표로 잘림** | 파이프라인 | 해결(0.1.3) | 반려 17건 중 16건 건너뜀, 정답 표 0/14 손실. 기존 v2 카드에는 재색인 때 반영 |
+| **검수 승인이 EDIT로 기록** | 백엔드 | 해결 | `review_compare.py` (11-19). 배포 뒤 A키 승인이 APPROVE로 남는지 확인 |
+| **빈 표 1건 (BERT p.8, fig-437d261937fb)** | 정답셋 | 열림 | 실제 표가 있으나 캡션 틀림, 표 데이터 없음. 검수대기 |
+| **오분류 '잘림'(제목·단위·주석) 다수** | 크롭(팀원4) | 열림 | 틀림 32건 중 잘림 13건. 크롭 여백 비교 자료 |
+| **비교 응답 모델·MetricType의 schemas.py 이전** | 백엔드/스키마 | 결정 대기 | check_state A6 경고 원인 |
+| **엔티티 정규화 (AGENTS.md 5절)** | 파이프라인 | 일부 완료 | 색인 시 entities 전체를 사전으로 바꾸는 처리는 아직 |
+| **기업명+지표 검색 약함** | 검색(팀원2) | 열림 | 1~3번 검색어 0.4~0.6. 다음 주 검색 개선 우선순위 |
+| **증권사 목록이 코드에 있음** | 파이프라인 | 열림 | `BROKER_ALIASES` → 사전으로 옮길지 검토 |
+| **CAP_LIMIT 문서 재색인 실행** | 파이프라인 | 대기 | 승인된 23건. 결정 19 재색인과 합칠지 확인 |
 | **잘못된 크롭 (KT&G 유안타 p.10)** | 크롭 | 열림 | 같은 캡션에 다른 크롭 박스 |
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
-| **현황서 1절 반려 건수** | 인프라 | 해결 | `update_status.py`가 승인·검수대기·반려를 따로 셈 (전에는 반려가 검수대기에 섞임) |
-| **표 셀 값이 문자열로 저장됨** | 파이프라인 | 해결 | 297개(결정 16) + 0.1.2 후 8개 정리. 남은 2개(fig-38347d0364c8 SK텔레콤 SK p.1 `'컨센서스_1'`·`'차이(%)_1'`, fig-ebfa3b5c97da 삼성전자 IBK p.4 `'이전 추정치_2'`)는 columns에 없는 열에 값이 있어 그대로 둠. 원문 확인 후 재추출 또는 수동 수정 대상 |
-| **행 키와 열 이름의 공백 차이** | 파이프라인 | 해결 | 0.1.2 `align_row_keys` (결정 17), 기존 표 반영 완료 |
-| **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | 정리 후에도 `unit`은 원문 그대로이고 % 행만 `unit_by_row`에 들어감. `unit_for`가 나머지 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산에 영향 있는지 확인 필요 |
-| **`.802`처럼 앞자리 0 없는 소수를 숫자로 못 바꿈** | 파이프라인 | 해결 | 0.1.2 `parse_cell_value` (결정 17), 기존 표 7개 반영 완료 |
-| **수치표 element_id 연결** | 정답셋(팀원3) | 해결 | 30/30 (11-19). 재색인 후 요소 없음 16개 다시 연결 |
-| **색인 한도로 뒤쪽 표 누락 (12p·도표 4개)** | 파이프라인 | 열림 | 수치 정답셋 30개 중 16개 카드 없음(페이지 한도 11, 도표 상한 5). 100쪽 넘는 보고서는 앞 12쪽 도표 4개만 색인됨. 결정 19 |
-| **정답값 원문 대조** | 정답셋 | 열림 | `cell_accuracy_extracted` 1.000이라 정답셋이 AI 결과를 보고 만들어지지 않았는지 원문 PDF로 표본 확인 필요 (표 2~3개) |
-| **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (예전부터, Docker 밖 실행 시) |
+| **표 셀 값이 문자열로 남은 2개** | 파이프라인 | 열림 | fig-38347d0364c8(SK텔레콤 SK p.1), fig-ebfa3b5c97da(삼성전자 IBK p.4). columns에 없는 열에 값. 원문 확인 후 재추출 또는 수동 수정 |
+| **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | `unit_for`가 % 아닌 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산 영향 확인 필요 |
+| **정답값 원문 대조** | 정답셋(팀원3) | 열림 | `cell_accuracy_extracted` 1.000이라 정답셋이 AI 결과를 보고 만들어지지 않았는지 원문 PDF로 표 2~3개 확인 |
+| **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (Docker 밖 실행 시) |
+| **doc_latency_sec 목표** | 파이프라인 | 열림 | 용어집 ≤ 15초(10쪽)는 Gemini 분당 14회 한도로 도표 3개 넘으면 불가. 실측 휴머노이드 27쪽 도표 10개 313.7초. 목표 재설정 필요 |
 
 ---
 
 ## 6. 알려진 함정 (Known Pitfalls)
 
-1. **PowerShell에서 `&&` 사용 불가**: `;` 또는 줄 나눠 실행.
-2. **100MB 초과 파일 Git push 불가**: 스냅샷·zip은 `.gitignore`.
-3. **문서당 도표 상한 기본값 4**: 후반부 표 누락(CAP_LIMIT) 주의.
-4. **Gemini 무료 티어 분당 14회**: 공용 `GeminiRateLimiter` 경유. 3.8-flash 503 시 lite로 대체되며 lite도 429 한도 있음. `reextract_empty_tables.py --reuse-cache`는 Gemini 호출 없이 후처리만 다시 함.
-5. **승격 후 메타데이터 보정 순서**: `promote_test_to_service.py`는 payload 전체를 덮어쓴다. 메타데이터 보정은 승격 뒤에 다시 돌린다.
-6. **확신도가 높아도 요소가 아닐 수 있음**: 목차 페이지도 표로 읽히면 0.95까지 나와 자동 승인됨. 승격·대량 반영 후에는 오분류 점검으로 한 번 더 본다.
-7. **Windows 콘솔 cp949**: 파이썬에서 git을 부를 때 `encoding="utf-8"`을 주지 않으면 한글 커밋 메시지에서 UnicodeDecodeError가 난다.
-8. **git pull 실패 (untracked 파일)**: 저장소에 새로 들어올 파일과 같은 이름의 로컬 파일이 있으면 pull이 멈춘다. 받은 스크립트·zip·ps1은 `C:\workAi\figindex_work`에 둔다.
+1. **PowerShell에서 `&&` 사용 불가**: `;` 또는 줄 나눠 실행. `python -c` 안에 `\"`와 `$`를 쓰지 않는다.
+2. **100MB 초과 파일 Git push 불가**: 스냅샷·zip은 저장소 밖(`C:\workAi\figindex_work`)에 둔다.
+3. **색인 한도**: `run_index.py` 기본값은 앞 12쪽·도표 4개(0.1.2까지). 업로드 작업자(`index_document`)는 전체 쪽·도표 40개.
+4. **Gemini 무료 티어 분당 14회**: 공용 `GeminiRateLimiter`는 프로세스마다 따로다. 작업자가 도는 동안 `run_index.py`나 재추출 스크립트를 함께 돌리면 합산 한도를 넘으므로 `docker compose stop worker` 후 실행.
+5. **승격 후 메타데이터 보정 순서**: `promote_test_to_service.py`는 payload 전체를 덮어쓴다. 메타데이터 보정은 승격 뒤에.
+6. **확신도가 높아도 요소가 아닐 수 있음**: 목차 페이지도 0.95까지 나왔다(0.1.3에서 거름). 대량 반영 후에는 오분류 점검.
+7. **Windows 콘솔 cp949**: 파이썬에서 git을 부를 때 `encoding="utf-8"`.
+8. **git pull 실패·브랜치 꼬임**: 로컬 브랜치가 원격과 갈라지면 pull이 충돌로 멈춘다(11-19 팀장 PC `ryu`). 로컬 작업이 원격에 다 있으면 `git merge --abort` 후 `git switch -C <브랜치> origin/<브랜치>`. 받은 스크립트·zip은 저장소 밖에.
 9. **실행 위치**: `scripts\*.py`는 저장소 루트, `docker compose`는 `figindex/`에서.
-10. **PowerShell 한글 깨짐**: Windows PowerShell 5.1은 BOM 없는 UTF-8 ps1과 REST 응답의 한글을 깨뜨려 보여 준다(데이터는 정상). ps1은 BOM 붙여 저장.
+10. **PowerShell 한글 깨짐**: Windows PowerShell 5.1은 BOM 없는 UTF-8과 REST 응답 한글을 깨뜨려 보여 준다(데이터는 정상).
 11. **Gemini 캐시를 끄지 않는다** (`extractor.py`).
+12. **작업자는 `-d`로 켠다**: `docker compose up`을 앞에 띄운 채 Ctrl+C를 누르면 모든 컨테이너가 멈춘다. 멈췄으면 `docker compose up -d`.
+13. **pipeline 이미지는 코드를 복사해 둔다**: pull 뒤 `docker compose --profile index build pipeline`을 하지 않으면 예전 코드로 돈다. 테스트 수(11-19 기준 226)로 확인.
+14. **`init_collection.py`는 새 컬렉션을 만들 때 `/data/crops`를 비운다**: 시험 컬렉션은 작업자나 `create_test_review_collection.py`로 만든다.
+15. **도표 찾기 규칙의 한계**: 지금 파이프라인은 YOLO가 아니라 PyMuPDF 표 탐지 + 캡션 규칙(`그림 N.`, `Figure N.`, `Fig. N.`)이다. `<그림 1>`, `[표 1-1]`, 선 없는 표, 이미지 조각으로 된 표는 놓칠 수 있다. 도표 0개 문서는 `scripts/diagnose_zero_elements.py`로 확인.
 
 ---
 
@@ -156,21 +168,23 @@
 1. **`figindex/shared/schemas.py`**: 유일한 표준 스키마 (`Element`, `ElementSearchPayload`, `TableData`, `ConfidenceSignals`, `Document`, `Batch`, `ReviewLog`, `ComparisonResult` 등).
 2. **`figindex/shared/coords.py`**: bbox `[x0, y0, x1, y1]`(좌상단 원점, 0~1)와 좌표 변환.
 3. **`docs/glossary.md`**: 확신도 신호(6절), 메타데이터(7절), 좌표(8절), 표 수치 저장 규칙(9절), 엔티티 사전(10절), 평가 지표(12절), 문서 간 비교(14절).
-4. **`AGENTS.md`**: 쓰지 않는 이름(2절), 수정 금지 파일(7절) 등 에이전트 규칙. 파이프라인 작업은 `figindex/pipeline/AGENTS.md`도 따른다.
-5. **`figindex/pipeline/pdf_text.py`**: PDF 텍스트를 2차원 좌표 순서로 읽는 단일 함수.
+4. **`AGENTS.md`**: 쓰지 않는 이름(2절), 수정 금지 파일(7절) 등. 파이프라인은 `figindex/pipeline/AGENTS.md`, 백엔드는 `figindex/backend/AGENTS.md`도 따른다.
+5. **`figindex/pipeline/pdf_text.py`**: PDF 글자 읽기와 목차 판단(`is_toc_page`).
 
 ### 실행 환경 (`figindex/docker-compose.yml`)
-- `figindex-qdrant`, `figindex-backend`, `figindex-frontend` (`QDRANT_COLLECTION=figindex_elements_v2`). backend는 kiwipiepy 포함 빌드 필요.
-- `pipeline` 서비스는 `profiles: ["index"]`.
-- Qdrant: 서비스 `figindex_elements_v2`(618), 구버전 `figindex_elements`(525), 시험 `figindex_test_ryu`. v2·v1 쓰기는 팀장 승인 필요.
-- 브랜치: `main`(배포), `ryu`(팀장 작업, 11-18 오후 기준 main과 같게 맞춤), 팀원 브랜치는 PR 병합 시 자동 삭제.
-- 관리자 검수 API: `POST /api/review/{element_id}` (헤더 `X-Admin-Password`, `review_action` APPROVE/REJECT). 처리할 때마다 ReviewLog 1줄 추가(팀원1, #36).
+- `figindex-qdrant`, `figindex-backend`, `figindex-frontend` (`QDRANT_COLLECTION=figindex_elements_v2`).
+- `pipeline` 서비스는 `profiles: ["index"]`, `worker` 서비스는 `profiles: ["worker"]`(`feat/upload-pipeline`, 11/20 배포 후 main).
+- Qdrant: 서비스 `figindex_elements_v2`(618), 구버전 `figindex_elements`(525), 시험 `figindex_test_upload`(작업자 결과), `figindex_test_coerce`, `figindex_test_review`. v2·v1 쓰기는 팀장 승인 필요. 데이터 zip은 `figindex_test_*`를 넣지 않는다.
+- 브랜치: `main`(배포), `ryu`(팀장 작업), `feat/upload-pipeline`(팀장, 11/20 병합 후 삭제). 팀원 개인 브랜치는 남긴다(결정 23).
+- 관리자 검수 API: `POST /api/review/{element_id}` (헤더 `X-Admin-Password`). 처리할 때마다 ReviewLog 1줄 추가. 다시 시도 API: `POST /api/documents/{doc_id}/retry` (`docs/migration/api_changes.md` 8절).
 
 ---
 
 ## 8. 로드맵 (Roadmap)
 
-- **이번 주 (~11/20)**: 금요일 배포(ryu → main 포함), 수치 정답셋 연결·측정 시작, 업로드→파이프라인 연결 설계, PIPELINE_VERSION 결정.
-- **11/23~27**: 비교 엔진 구현·정리(두 엔진 역할 정리, 모델 schemas.py 이전 결정), 추출 품질 조정(목차 거르기, 색인 시 entities 전체 사전 정규화), 팀원4 합류 후 크롭(YOLO) 비교(오분류 '잘림' 사례 활용). 11/27 기능 개발 마감.
+- **11/20(금)**: 배포(ryu → main → `feat/upload-pipeline` → main), 팀장 PC `register_existing_pdfs`, 시험 컬렉션에서 업로드 연결 확인, 팀원 데이터 zip 안내.
+- **11/23~24**: 팀원1 업로드 화면 2가지, 팀원4 합류(크롭·YOLO 비교).
+- **11/25~26**: 0.1.3 규칙으로 13개 문서 + 드론 논문 재색인(기존 요소 유지, 결정 22), 수치 정답셋 다시 측정(`gt_table_coverage`), 팀원3 '요소 없음' 16행 재연결, 정답값 원문 대조.
+- **11/27**: 기능 개발 마감, 업로드 작업자 서비스 v2로 전환.
 - **11/30~12/2**: 지표 측정·버그 수정.
 - **12/3**: 시연 리허설.
