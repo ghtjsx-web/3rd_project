@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -25,15 +26,15 @@ sys.path.insert(0, str(REPO_ROOT / "figindex"))
 try:
     from shared.schemas import ReviewStatus
 except ImportError as e:
-    sys.exit(f"shared 모듈을 불러오지 못했습니다: {e}")
+    sys.exit(f"shared 모듈을 불러오지 못했습니다: {e}\n'pip install pydantic' 또는 Python 3.12 환경에서 실행해 주세요.")
 
 
-def make_request(url: str, method: str = "GET", data: dict = None) -> dict:
+def make_request(url: str, method: str = "GET", data: dict = None, timeout: float = 30.0) -> dict:
     req_data = json.dumps(data).encode("utf-8") if data is not None else None
     headers = {"Content-Type": "application/json"} if req_data else {}
     req = urllib.request.Request(url, data=req_data, headers=headers, method=method.upper())
     try:
-        with urllib.request.urlopen(req, timeout=10.0) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         print(f"[Error] HTTP {method} {url} 실패: {e}", file=sys.stderr)
@@ -120,8 +121,9 @@ def create_test_collection(
     # 6. 시험 컬렉션에 포인트 적재
     print(f"\n5. 시험 컬렉션({target_collection})에 데이터 복사 중...")
     upsert_body = {"points": points}
-    make_request(f"{qdrant_url}/collections/{target_collection}/points?wait=true", method="PUT", data=upsert_body)
-    print("데이터 복사 완료!")
+    make_request(f"{qdrant_url}/collections/{target_collection}/points", method="PUT", data=upsert_body)
+    print("데이터 전송 완료! Qdrant 색인 반영 대기 중...")
+    time.sleep(2.0)
 
     # 7. 검증
     test_info = make_request(f"{qdrant_url}/collections/{target_collection}")
