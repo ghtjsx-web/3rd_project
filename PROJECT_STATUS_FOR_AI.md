@@ -6,9 +6,9 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-18 마감. 데이터 정리·통합 완료, 업로드(진행률·ReviewLog·기존 PDF 등록)와 검색 측정까지 끝남. 다음은 업로드→파이프라인 연결과 수치 정답셋 측정
-2. **방금 한 일과 결과 (2026-11-18)**: 빈 표 정리·'요소 아님' 17건 반려·종목명 사전 기준 통일(거래소 종목명, #34 포함) 후 새 zip 배포. 표지 기반 메타데이터(#35), 업로드 진행률·ReviewLog·기존 PDF 등록(#36) 병합. 검색 정식 측정 P@5 0.900·응답 0.314초. 오분류 점검 88건 완료
-3. **다음 할 일 (11-19)**: 수치표 30개를 v2 요소와 대조하고 팀원3용 예시 만들기 → `cell_accuracy`·`table_valid_rate` 계산 스크립트, PIPELINE_VERSION 결정, 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토. 팀원2는 11-19 결근
+1. **현재 단계**: 11-19 오전. 수치 정답셋 채점 준비 완료(정답셋 CSV·`eval_tables.py`). 팀원3이 표 30개의 element_id를 연결하는 중. 다음은 업로드→파이프라인 연결 설계
+2. **방금 한 일과 결과 (2026-11-19)**: 정답셋 작업 시트에 '수치표_연결' 탭 추가(T01 예시 fig-1df2783f1cd8, 15칸 모두 일치). 시트 '수치표' 탭을 `figindex/data/gt/table/cells.csv`(표 30개, 숫자 셀 790개)로, 연결을 `links.csv`로 옮김. `scripts/eval_tables.py`(table_valid_rate·cell_accuracy) 작성, 테스트 8건 통과. 역할 문서 3_정답셋 4단계를 연결 방식으로 수정
+3. **다음 할 일 (11-19)**: 팀장 PC에서 `python scripts/eval_tables.py`로 table_valid_rate 첫 측정, PIPELINE_VERSION 결정, 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토, 업로드→파이프라인 연결 설계. 팀원2는 11-19 결근
 4. **막힌 것**: 없음
 5. **팀장 결정 대기**: ① PIPELINE_VERSION 0.1.1 → 0.1.2 (표지 메타데이터, #35) ② `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
@@ -42,7 +42,7 @@
 - 검색 정식 측정 (새 zip, `eval_search.py`, 검색어 20개): `precision_at_5` 0.900, `search_latency_sec` 0.314 (첫 실행, 1번 검색어 1.66초 포함). 기업명+지표 검색(1~3번)은 0.6·0.5·0.4로 가장 낮음
 - 엔티티 사전 `figindex/data/entity_dictionary.csv`: 65개 (종목 50, 기관 9, 제품 6), 종목은 한국거래소 종목명 기준
 - 오분류 점검 88건 완료: 맞음 56, 틀림 32 (요소 아님 17, 잘림 13, 캡션 3, 노이즈 1, 유형 0)
-- 수치 정답셋: 정답셋 작업 시트 '수치표' 탭에 표 30개(T01~T30), 셀 약 800개. 아직 v2 요소 ID와 연결 전
+- 수치 정답셋: `figindex/data/gt/table/cells.csv` 표 30개(T01~T30), 숫자 셀 790개(숫자 아닌 7칸 제외). 연결 `links.csv` 1/30 (T01, 팀원3 진행 중)
 - 업로드 DB `data/metadata.sqlite3`: 기존 PDF 141개 등록 (PC마다 `docker compose exec backend python -m app.register_existing_pdfs` 1회)
 - 상태 검사기 (11-18 16:00, Docker 포함): PASS=7, WARN=1(A6), FAIL=0, 단위 테스트 200건 통과
 ---
@@ -51,11 +51,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-19 10:10** | 수치 정답셋 채점 준비 (팀원3 예시·정답셋 CSV·채점 스크립트) | `scripts/eval_tables.py`, `scripts/test_eval_tables.py`, `figindex/data/gt/table/cells.csv`·`links.csv`, `docs/roles/3_정답셋.md` | `pytest scripts/test_eval_tables.py` | 테스트 8건 통과, 정답 셀 790개, T01 15/15 일치 | **PASS** |
 | **11-18 18:12** | `update_status.py`가 Windows에서 한글 커밋 메시지를 못 읽던 문제 (cp949) | `scripts/update_status.py` | `python scripts/update_status.py` | git 호출 3곳 UTF-8로 읽음, 1절 '최신 커밋' 정상 표시 | **PASS** |
 | **11-18 18:06** | 검색 정식 측정 (팀원2 결근 대신 팀장) | 없음 | `python scripts/eval_search.py` | P@5 0.900, 응답 0.314초(첫 실행)·0.024초(캐시) | **PASS** |
 | **11-18 17:46** | 팀원1 진행률·ReviewLog·기존 PDF 등록(#36) 병합, 거래소 종목명(#34) 재정규화 | `backend/app/upload_store.py` 등, (데이터) v2 16포인트 | `python -m app.register_existing_pdfs`, `fix_metadata_from_filename.py` | 기존 PDF 141개 등록, 씨엠티엑스 5·씨에스윈드 5·LIG디펜스앤에어로스페이스 6 | **PASS** |
 | **11-18 17:30** | 업로드 PDF 이름이 형식과 달라도 표지에서 종목·증권사·발행일 채우기, 현황서 반려 건수 분리 | `pipeline/orchestrator.py`, `pipeline/test_cover_metadata.py`, `scripts/update_status.py` | `pytest pipeline/test_cover_metadata.py pipeline/test_metadata_generalization.py` | 새 테스트 7건·기존 메타데이터 테스트 통과 | **PASS** |
-| **11-18 16:57** | 팀원1 PDF 묶음 업로드(#11) 병합, main을 ryu에 합침 | `backend/app/main.py`, `backend/app/upload_store.py`, `frontend/app/components/UploadPanel.tsx` 등 | 업로드 저장 로직 직접 시험 | 처음 등록·중복·같은 이름 충돌·묶음 내 중복 5가지 기대대로 | **PASS** |
 
 ---
 
@@ -74,6 +74,7 @@
 11. **데이터 작업 도구 (모두 dry-run 기본, 백업·되돌리기 지원)**: `reextract_empty_tables.py`(시험 컬렉션 전용), `promote_test_to_service.py`, `fix_metadata_from_filename.py`, `restore_tables_from_v1.py`, `list_review_candidates.py`, `diagnose_empty_tables.py`.
 12. **PDF 묶음 업로드 (팀원1, #11)**: `POST /api/batches`, 화면 '📄 PDF 업로드' 탭. SHA-256 `doc_hash`로 중복 판정, `data/metadata.sqlite3`에 Batch·Document 저장. 파이프라인 실행은 아직 연결 안 함.
 13. **표지 기반 메타데이터 (11-18)**: 파일명 형식이 아니면 표지에서 종목(사전 종목코드 → 사전 이름·별칭), 증권사(`BROKER_ALIASES`, '증권'·'투자' 들어간 표기만, 표지 → 마지막 페이지), 발행일(표지 → 파일명 YYYYMMDD → 끝 MMDD)을 찾음. 못 찾으면 None.
+14. **표 평가 (11-19)**: `scripts/eval_tables.py`. table_valid_rate는 반려 제외 TABLE 중 TableData 검증 통과·행 1개 이상 비율. cell_accuracy는 정답 숫자 셀을 (행 라벨, 열 이름)으로 맞춰 비교하며, AI 값은 `parse_cell_value`로 정리 후 비교하고 정리 전 문자열이던 칸은 `rule_violation_cells`로 따로 셈. 행·열이 바뀐 표도 찾아 `transposed_cells`로 셈. 미연결 표는 채점하지 않음.
 
 ---
 
@@ -108,7 +109,7 @@
 | **엔티티 정규화 (AGENTS.md 5절)** | 파이프라인 | 일부 완료 | 문서 종목명(target)·`analyze_comparability.py`는 사전 기준으로 맞춤. 색인 시 entities 전체를 사전으로 바꾸는 처리는 아직 (사전에 없는 값 345종, 대부분 일반 단어·증권사명) |
 | **사전 이름 기준** | 검색(팀원2) | 해결 | 한국거래소 종목명 기준으로 통일(#34), v2 재정규화 완료 |
 | **기업명+지표 검색 약함** | 검색(팀원2) | 열림 | 정식 측정에서 1~3번(SK하이닉스·삼성전자·카카오)이 0.4~0.6. 서비스 핵심 시나리오라 다음 주 검색 개선 우선순위 |
-| **오분류 점검** | 정답셋(팀원3) | 해결 | 88건 완료. 다음은 수치표 30개 요소 ID 연결 (11-19 예시 제공) |
+| **오분류 점검** | 정답셋(팀원3) | 해결 | 88건 완료 |
 | **업로드 DB의 기존 PDF doc_id·상태** | 업로드(팀원1) | 요청함 | 기존 PDF 등록은 됨(#36). doc_id를 Qdrant와 맞추기, 미색인 5개는 UPLOADED로 등록 요청 |
 | **업로드 → 파이프라인 연결** | 팀장·팀원1 | 열림 | 연결 시 표지 기반 메타데이터 사용. 증권사 목록은 아직 코드(`BROKER_ALIASES`)에 있음 → 사전으로 옮길지 검토 |
 | **KB금융·우리금융지주 도표 0개** | 파이프라인 | 열림 | 텍스트 중심 리포트 |
@@ -116,6 +117,9 @@
 | **잘못된 크롭 (KT&G 유안타 p.10)** | 크롭 | 열림 | 같은 캡션에 다른 크롭 박스 |
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
 | **현황서 1절 반려 건수** | 인프라 | 해결 | `update_status.py`가 승인·검수대기·반려를 따로 셈 (전에는 반려가 검수대기에 섞임) |
+| **표 셀 값이 문자열로 저장됨** | 파이프라인 | 열림 | T01(fig-1df2783f1cd8)은 `'1,202.2'`, `'6.0%'` 문자열, `unit: '십억원, %'` 하나로 저장 (glossary 9절과 다름). `coerce_table_data` 적용 전 요소로 보임. `eval_tables.py`의 rule_violation_cells로 규모 확인 후 재처리 여부 결정 |
+| **`.802`처럼 앞자리 0 없는 소수를 숫자로 못 바꿈** | 파이프라인 | 열림 | `table_parse.parse_cell_value` 정규식이 `\d+` 시작만 허용. 수치 정답셋 T23(Fleiss κ) 4칸이 해당. 고치면 PIPELINE_VERSION 올림 대상 |
+| **수치표 element_id 연결** | 정답셋(팀원3) | 진행 중 | '수치표_연결' 탭 1/30. 끝나면 팀장이 links.csv로 옮겨 cell_accuracy 측정 (11/27 전) |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (예전부터, Docker 밖 실행 시) |
 
 ---
