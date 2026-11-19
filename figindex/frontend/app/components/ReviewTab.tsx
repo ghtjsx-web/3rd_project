@@ -204,6 +204,40 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
     }
   };
 
+  useEffect(() => {
+    if (!isAuthenticated || loading) return;
+
+    const handleReviewShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || processingId) return;
+
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        (activeElement.matches("input, textarea, select") || activeElement.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const isApprove = key === "a" || event.code === "KeyA";
+      const isReject = key === "r" || event.code === "KeyR";
+      if (!isApprove && !isReject) return;
+
+      const currentElement = elements[0];
+      if (!currentElement) return;
+      if (feedbackMsg?.id === currentElement.element_id && feedbackMsg.type === "success") return;
+
+      event.preventDefault();
+      void handleDecision(
+        currentElement.element_id,
+        isApprove ? "APPROVE" : "REJECT",
+      );
+    };
+
+    window.addEventListener("keydown", handleReviewShortcut);
+    return () => window.removeEventListener("keydown", handleReviewShortcut);
+  }, [elements, feedbackMsg, handleDecision, isAuthenticated, loading, processingId]);
+
   // 1. Password Protection Gate (Not Authenticated)
   if (!isAuthenticated) {
     return (
