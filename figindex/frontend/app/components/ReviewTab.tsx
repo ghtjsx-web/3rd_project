@@ -172,15 +172,6 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
     setProcessingId(elementId);
     setFeedbackMsg(null);
 
-    // 서비스 컬렉션(figindex_elements_v2) 보호 안전 가드
-    if (collectionName === "figindex_elements_v2") {
-      const guardMsg = "⚠️ 서비스 컬렉션(figindex_elements_v2)에서는 승인·반려를 실행할 수 없습니다. 시험 컬렉션 연결 후 진행해 주세요.";
-      alert(guardMsg);
-      setFeedbackMsg({ id: elementId, text: guardMsg, type: "error" });
-      setProcessingId(null);
-      return;
-    }
-
     const draft = drafts[elementId];
 
     let parsedTableData = null;
@@ -316,7 +307,7 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isAuthenticated, elements, activeId, processingId, drafts, adminPassword, collectionName]);
+  }, [isAuthenticated, elements, activeId, processingId, drafts, adminPassword]);
 
   // 1. Password Protection Gate (Not Authenticated)
   if (!isAuthenticated) {
@@ -392,15 +383,11 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
               <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold border border-emerald-300">
                 관리자 인증 완료 🟢
               </span>
-              {collectionName === "figindex_elements_v2" ? (
-                <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full font-bold border border-rose-300" title="실제 서비스 데이터 보호 중">
-                  🛡️ 서비스 컬렉션 ({collectionName}) - 승인·반려 보호됨
+              {collectionName && (
+                <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium border border-slate-200">
+                  컬렉션: {collectionName}
                 </span>
-              ) : collectionName ? (
-                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold border border-indigo-300">
-                  🧪 시험 컬렉션 ({collectionName})
-                </span>
-              ) : null}
+              )}
             </div>
             <p className="text-xs text-amber-700 mt-0.5">
               AI 확신도가 0.80 미만인 도표입니다. 오류를 수정한 뒤 <strong>[승인]</strong>하면 즉시 일반 검색 결과에 노출됩니다.
