@@ -1,6 +1,7 @@
 """shared/upload_db.py 테스트 (작업자·다시 시도 상태 흐름)."""
 import sqlite3
 import tempfile
+from contextlib import closing
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,9 +29,15 @@ class UploadDbTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
+    def sql(self, query: str, params=()):
+        """sqlite3의 with는 연결을 닫지 않아 Windows에서 임시 폴더를 못 지우므로 closing으로 닫는다."""
+        with closing(sqlite3.connect(self.db)) as c:
+            rows = c.execute(query, params).fetchall()
+            c.commit()
+            return rows
+
     def status(self, doc_id: str) -> str:
-        with sqlite3.connect(self.db) as c:
-            return c.execute("SELECT doc_status FROM documents WHERE doc_id = ?", (doc_id,)).fetchone()[0]
+        return self.sql("SELECT doc_status FROM documents WHERE doc_id = ?", (doc_id,))[0][0]
 
     def test_claim_takes_oldest_uploaded_once(self) -> None:
         first = upload_db.claim_next_document(self.db)
@@ -45,8 +52,7 @@ class UploadDbTests(unittest.TestCase):
                                       "extra_metadata": {"element_count": 0}})
         self.assertTrue(upload_db.mark_document_completed(self.db, done))
         self.assertEqual(self.status("d1"), DocStatus.COMPLETED.value)
-        with sqlite3.connect(self.db) as c:
-            row = c.execute("SELECT doc_title, page_count, extra_metadata FROM documents WHERE doc_id='d1'").fetchone()
+        row = self.sql("SELECT doc_title, page_count, extra_metadata FROM documents WHERE doc_id='d1'")[0]
         self.assertEqual(row, ("제목", 12, '{"element_count": 0}'))
         self.assertFalse(upload_db.mark_document_completed(self.db, done))   # 이미 COMPLETED
 
@@ -67,8 +73,7 @@ class UploadDbTests(unittest.TestCase):
             upload_db.retry_document(self.db, "d1")   # UPLOADED는 다시 시도 대상 아님
 
     def test_retry_refused_when_same_content_is_active(self) -> None:
-        with sqlite3.connect(self.db) as c:
-            c.execute("UPDATE documents SET doc_hash = 'h1' WHERE doc_id = 'd3'")
+        self.sql("UPDATE documents SET doc_hash = 'h1' WHERE doc_id = 'd3'")
         with self.assertRaises(upload_db.RetryNotAllowed):
             upload_db.retry_document(self.db, "d3")
 
