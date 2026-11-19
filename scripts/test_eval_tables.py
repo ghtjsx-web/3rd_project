@@ -127,3 +127,11 @@ def test_coverage_and_extracted_accuracy_and_wrong_document_link():
     assert r["extracted_tables"] == 1 and abs(r["gt_table_coverage"] - 1 / 3) < 1e-9
     assert r["cell_accuracy_extracted"] == 0.5
     assert r["per_table"][2]["state"].startswith("연결 오류")
+
+
+def test_label_typography_variants_match():
+    # 11-19 첫 측정: T23 'Fleiss’ κ' vs "Fleiss' κ", T28 '(mm2)' vs '(mm²)'
+    table = {"columns": ["구분", "Fleiss' κ", "Measured damage area (mm²)"],
+             "rows": [{"구분": "국어", "Fleiss' κ": 0.802, "Measured damage area (mm²)": 125.8}]}
+    scored = score_table([gt("국어", "Fleiss’ κ", 0.802), gt("국어", "Measured damage area (mm2)", 125.8)], table)
+    assert [s["result"] for s in scored] == ["맞음", "맞음"]

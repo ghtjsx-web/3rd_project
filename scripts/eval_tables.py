@@ -18,7 +18,8 @@ cell_accuracy_extracted = 카드가 있는 표의 숫자 셀만 채점한 cell_a
 - 정답 값이 숫자가 아닌 셀(NA, 텍스트)은 숫자 셀이 아니므로 빼고 센다.
 - AI 값은 pipeline/table_parse.py의 parse_cell_value로 정리한 뒤 비교한다 ('1,202.2' → 1202.2, '6.0%' → 6.0).
   읽은 숫자가 맞는지를 재는 지표라서다. 정리 없이는 숫자가 아니었던 칸 수는 rule_violation_cells로 따로 보고한다.
-- 행 라벨·열 이름은 공백을 모두 빼고 비교한다. 같은 행 라벨이 여러 번 나오면 나온 순서대로 짝짓는다.
+- 행 라벨·열 이름은 공백을 모두 빼고, 같은 글자의 다른 표기(NFKC: 'mm²' → 'mm2', 전각 → 반각)와
+  따옴표 모양(’ ‘ ′ → ', “ ” → ")을 맞춰 비교한다. 같은 행 라벨이 여러 번 나오면 나온 순서대로 짝짓는다.
 - 행과 열이 바뀌어 저장된 표는 (열 이름, 행 라벨)로 한 번 더 찾고, transposed_cells로 따로 센다.
 - links.csv에 아직 없는 표는 채점하지 않고 '미연결'로 보고한다.
 - 연결 판정이 '다른 표가 잡힘'·'요소 없음'이거나 요소가 컬렉션에 없거나 반려됐으면 그 표의 셀은 모두 틀린 것으로 센다.
@@ -36,6 +37,7 @@ import json
 import math
 import os
 import sys
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -65,9 +67,15 @@ def is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+_QUOTES = str.maketrans({"’": "'", "‘": "'", "′": "'", "`": "'", "“": '"', "”": '"', "″": '"'})
+
+
 def norm_label(text: Any) -> str:
-    """행 라벨·열 이름 비교용: 공백을 모두 빼고 소문자로."""
-    return "".join(str(text).split()).lower() if text is not None else ""
+    """행 라벨·열 이름 비교용: NFKC 정규화, 따옴표 모양 통일, 공백 제거, 소문자."""
+    if text is None:
+        return ""
+    normalized = unicodedata.normalize("NFKC", str(text)).translate(_QUOTES)
+    return "".join(normalized.split()).lower()
 
 
 def same_number(a: float, b: float) -> bool:
