@@ -9,52 +9,11 @@ from pathlib import Path
 from typing import Mapping, Sequence, Tuple
 
 from shared.schemas import Batch, Document, DocStatus, ReviewLog
+from shared.upload_db import CREATE_SCHEMA, row_to_document
 
 
-_CREATE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS batches (
-    batch_id TEXT PRIMARY KEY,
-    collection_id TEXT,
-    doc_count INTEGER NOT NULL CHECK (doc_count >= 0),
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS documents (
-    doc_id TEXT PRIMARY KEY,
-    batch_id TEXT NOT NULL REFERENCES batches(batch_id),
-    doc_hash TEXT NOT NULL,
-    doc_name TEXT NOT NULL,
-    doc_title TEXT,
-    doc_type TEXT,
-    domain TEXT,
-    source_org TEXT,
-    authors TEXT NOT NULL,
-    publish_date TEXT,
-    page_count INTEGER,
-    collection_id TEXT,
-    doc_status TEXT NOT NULL,
-    doc_error TEXT,
-    created_at TEXT NOT NULL,
-    extra_metadata TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS index_documents_batch_id ON documents(batch_id);
-CREATE INDEX IF NOT EXISTS index_documents_doc_hash ON documents(doc_hash);
-
-CREATE TABLE IF NOT EXISTS review_logs (
-    review_id TEXT PRIMARY KEY,
-    element_id TEXT NOT NULL,
-    reviewer TEXT NOT NULL,
-    review_action TEXT NOT NULL,
-    changed_fields TEXT NOT NULL,
-    "before" TEXT NOT NULL,
-    "after" TEXT NOT NULL,
-    confidence_score REAL NOT NULL,
-    reviewed_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS index_review_logs_element_id ON review_logs(element_id);
-"""
+# 스키마와 상태 변경 함수는 백엔드와 작업자가 같이 쓰도록 shared/upload_db.py에 있다.
+_CREATE_SCHEMA = CREATE_SCHEMA
 
 
 def _file_doc_hash(path: Path) -> str:
@@ -117,7 +76,7 @@ def register_existing_pdfs(
         existing_documents = {}
         for row in connection.execute(
             """
-            SELECT rowid AS row_id, doc_id, doc_hash
+            SELECT rowid AS row_id, doc_id, doc_hash, doc_status, extra_metadata
             FROM documents
             WHERE doc_status IN (?, ?, ?)
             """,
@@ -143,11 +102,22 @@ def register_existing_pdfs(
             if doc_hash in existing_hashes:
                 skipped_duplicate_count += 1
                 existing_document = existing_documents.get(doc_hash)
-                if existing_document is not None and doc_hash not in reconciled_hashes:
+                if (
+                    existing_document is not None
+                    and doc_hash not in reconciled_hashes
+                    # 작업자가 처리 중인 문서는 건드리지 않는다 (설계서: 처리 중 문서 건너뛰기)
+                    and existing_document["doc_status"] != DocStatus.PROCESSING.value
+                ):
                     doc_id = qdrant_doc_id or existing_document["doc_id"]
+                    # 작업자가 처리한 문서(extra_metadata.element_count 있음)는 Qdrant에 없어도 COMPLETED를 유지한다
+                    # (도표 0개 문서, 시험 컬렉션에 처리한 문서). 예전 일괄 등록의 COMPLETED는 그대로 UPLOADED로 낮춘다.
+                    processed_by_worker = (
+                        existing_document["doc_status"] == DocStatus.COMPLETED.value
+                        and "element_count" in json.loads(existing_document["extra_metadata"] or "{}")
+                    )
                     doc_status = (
                         DocStatus.COMPLETED
-                        if qdrant_doc_id
+                        if qdrant_doc_id or processed_by_worker
                         else DocStatus.UPLOADED
                     )
                     conflicting_document = connection.execute(
@@ -385,13 +355,7 @@ def get_batch_documents(db_path: str, batch_id: str) -> list[Document] | None:
             "SELECT * FROM documents WHERE batch_id = ? ORDER BY rowid",
             (batch_id,),
         ).fetchall()
-        documents = []
-        for row in rows:
-            document_data = dict(row)
-            document_data["authors"] = json.loads(document_data["authors"])
-            document_data["extra_metadata"] = json.loads(document_data["extra_metadata"])
-            documents.append(Document.model_validate(document_data))
-        return documents
+        return [row_to_document(row) for row in rows]
     finally:
         connection.close()
 

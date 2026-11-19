@@ -7,11 +7,16 @@ sys.path.insert(0, str(PIPELINE_DIR))
 sys.path.insert(0, str(PIPELINE_DIR.parent))
 
 from shared.schemas import DocStatus, Document  # noqa: E402
+import hashlib  # noqa: E402
+
 from worker import run_once  # noqa: E402
+
+PDF = b"%PDF-1.4 test"
+PDF_HASH = hashlib.sha256(PDF).hexdigest()
 
 
 def make_doc(doc_name="a.pdf"):
-    return Document(doc_id="11111111-2222-3333-4444-555555555555", batch_id="b1", doc_hash="h" * 64,
+    return Document(doc_id="11111111-2222-3333-4444-555555555555", batch_id="b1", doc_hash=PDF_HASH,
                     doc_name=doc_name, doc_status=DocStatus.PROCESSING, extra_metadata={"from_upload": 1})
 
 
@@ -27,7 +32,7 @@ def test_nothing_to_do(tmp_path):
 
 
 def test_completed_keeps_doc_id_and_merges_metadata(tmp_path):
-    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4")
+    (tmp_path / "a.pdf").write_bytes(PDF)
     doc = make_doc()
 
     def index(path, doc_id):
@@ -51,7 +56,7 @@ def test_missing_file_fails_without_calling_pipeline(tmp_path):
 
 
 def test_pipeline_error_is_recorded_and_shortened(tmp_path):
-    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4")
+    (tmp_path / "a.pdf").write_bytes(PDF)
 
     def index(path, doc_id):
         raise RuntimeError("503 " + "x" * 1000)
@@ -63,8 +68,16 @@ def test_pipeline_error_is_recorded_and_shortened(tmp_path):
 
 
 def test_changed_doc_id_is_a_failure(tmp_path):
-    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4")
+    (tmp_path / "a.pdf").write_bytes(PDF)
     doc = make_doc()
     log, complete, fail = recorder()
     out = run_once(lambda: doc, lambda p, i: doc.model_copy(update={"doc_id": "other"}), complete, fail, tmp_path)
     assert out == DocStatus.FAILED.value and "doc_id가 바뀜" in log["failed"][0][1]
+
+
+def test_different_file_content_fails(tmp_path):
+    (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4 another report")
+    called = []
+    log, complete, fail = recorder()
+    out = run_once(lambda: make_doc(), lambda p, i: called.append(1), complete, fail, tmp_path)
+    assert out == DocStatus.FAILED.value and called == [] and "doc_hash 불일치" in log["failed"][0][1]

@@ -14,6 +14,7 @@ COMPLETED / FAILED를 기록한다. 백엔드는 등록만 하고, 처리는 이
     docker compose logs -f worker
 일괄 스크립트(run_index.py, 재추출 등)를 돌리는 동안에는 멈춘다: docker compose stop worker
 """
+import hashlib
 import os
 import sys
 import time
@@ -26,6 +27,14 @@ DB_PATH = os.getenv("UPLOAD_DB_PATH", "/data/metadata.sqlite3")
 PDFS_DIR = Path(os.getenv("PDFS_DIR", "/data/pdfs"))
 POLL_SECONDS = float(os.getenv("WORKER_POLL_SECONDS", "5"))
 MAX_ERROR_CHARS = 300
+
+
+def file_doc_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def run_once(
@@ -45,6 +54,9 @@ def run_once(
     try:
         if not pdf_path.is_file():
             raise FileNotFoundError(f"PDF 파일 없음: {pdf_path.name}")
+        # 같은 이름의 다른 PDF가 저장된 경우(업로드 때 이름 충돌로 FAILED였던 문서의 재시도 등) 엉뚱한 파일을 색인하지 않는다
+        if file_doc_hash(pdf_path) != document.doc_hash:
+            raise ValueError(f"파일 내용이 등록한 문서와 다름 (doc_hash 불일치): {pdf_path.name}")
         result = index(pdf_path, document.doc_id)
         if result.doc_id != document.doc_id:
             raise RuntimeError(f"doc_id가 바뀜 ({document.doc_id} → {result.doc_id})")
