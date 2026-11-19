@@ -195,7 +195,8 @@ def is_toc_text(text: str) -> bool:
     if any(h in head for h in TOC_HEADINGS):
         return numbered >= 5 and numbered / len(lines) >= 0.5
     entries = sum(1 for ln in lines if _TOC_ENTRY_START.search(ln))
-    return numbered >= 8 and numbered / len(lines) >= 0.8 and entries / len(lines) >= 0.5
+    # 줄의 80% 이상(정수로 비교: 확신도 임계값 0.8과 헷갈리지 않게)이 쪽번호로 끝나고, 절반 이상이 목차 항목 모양
+    return numbered >= 8 and numbered * 5 >= len(lines) * 4 and entries / len(lines) >= 0.5
 
 
 def is_toc_page(page) -> bool:
