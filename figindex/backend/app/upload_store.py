@@ -6,7 +6,7 @@ import shutil
 import sqlite3
 import uuid
 from pathlib import Path
-from typing import Sequence, Tuple
+from typing import Mapping, Sequence, Tuple
 
 from shared.schemas import Batch, Document, DocStatus, ReviewLog
 
@@ -68,11 +68,17 @@ def _file_doc_hash(path: Path) -> str:
     return doc_hash.hexdigest()
 
 
-def register_existing_pdfs(db_path: str, pdfs_dir: str) -> tuple[int, int, int]:
-    """Register already-indexed PDFs so later uploads are recognized as duplicates.
+def register_existing_pdfs(
+    db_path: str,
+    pdfs_dir: str,
+    qdrant_doc_ids: Mapping[str, str],
+) -> tuple[int, int, int]:
+    """Register and reconcile local PDFs using read-only Qdrant metadata.
 
-    Returns (scanned_count, registered_count, skipped_duplicate_count). Files are
-    read only; each new hash is stored as COMPLETED in one SQLite batch.
+    PDFs whose doc_name is present in Qdrant reuse its doc_id and are marked
+    COMPLETED. Other PDFs are marked UPLOADED. Existing active rows are also
+    reconciled by doc_hash. Returns (scanned_count, registered_count,
+    skipped_duplicate_count).
     """
     source_pdfs_dir = Path(pdfs_dir)
     if not source_pdfs_dir.is_dir():
@@ -91,6 +97,13 @@ def register_existing_pdfs(db_path: str, pdfs_dir: str) -> tuple[int, int, int]:
         return 0, 0, 0
 
     hashed_pdfs = [(path, _file_doc_hash(path)) for path in pdf_paths]
+    hashed_pdfs.sort(
+        key=lambda item: (
+            item[1],
+            item[0].name not in qdrant_doc_ids,
+            item[0].name.casefold(),
+        )
+    )
     database_path = Path(db_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -99,31 +112,73 @@ def register_existing_pdfs(db_path: str, pdfs_dir: str) -> tuple[int, int, int]:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.executescript(_CREATE_SCHEMA)
         connection.execute("BEGIN IMMEDIATE")
+        connection.row_factory = sqlite3.Row
 
-        existing_hashes = {
-            row[0]
-            for row in connection.execute(
-                """
-                SELECT doc_hash
-                FROM documents
-                WHERE doc_status IN (?, ?, ?)
-                """,
-                (
-                    DocStatus.UPLOADED.value,
-                    DocStatus.PROCESSING.value,
-                    DocStatus.COMPLETED.value,
-                ),
-            )
-        }
+        existing_documents = {}
+        for row in connection.execute(
+            """
+            SELECT rowid AS row_id, doc_id, doc_hash
+            FROM documents
+            WHERE doc_status IN (?, ?, ?)
+            """,
+            (
+                DocStatus.UPLOADED.value,
+                DocStatus.PROCESSING.value,
+                DocStatus.COMPLETED.value,
+            ),
+        ):
+            if row["doc_hash"] in existing_documents:
+                raise ValueError(
+                    f"Multiple active documents have doc_hash {row['doc_hash']}"
+                )
+            existing_documents[row["doc_hash"]] = row
 
-        new_pdfs: list[tuple[Path, str]] = []
+        existing_hashes = set(existing_documents)
+        reconciled_hashes: set[str] = set()
+
+        new_pdfs: list[tuple[Path, str, str | None]] = []
         skipped_duplicate_count = 0
         for pdf_path, doc_hash in hashed_pdfs:
+            qdrant_doc_id = qdrant_doc_ids.get(pdf_path.name)
             if doc_hash in existing_hashes:
                 skipped_duplicate_count += 1
+                existing_document = existing_documents.get(doc_hash)
+                if existing_document is not None and doc_hash not in reconciled_hashes:
+                    doc_id = qdrant_doc_id or existing_document["doc_id"]
+                    doc_status = (
+                        DocStatus.COMPLETED
+                        if qdrant_doc_id
+                        else DocStatus.UPLOADED
+                    )
+                    conflicting_document = connection.execute(
+                        """
+                        SELECT doc_hash
+                        FROM documents
+                        WHERE doc_id = ? AND rowid <> ?
+                        """,
+                        (doc_id, existing_document["row_id"]),
+                    ).fetchone()
+                    if conflicting_document is not None:
+                        raise ValueError(
+                            f"doc_id {doc_id} is already registered for another document"
+                        )
+                    connection.execute(
+                        """
+                        UPDATE documents
+                        SET doc_id = ?, doc_name = ?, doc_status = ?
+                        WHERE rowid = ?
+                        """,
+                        (
+                            doc_id,
+                            pdf_path.name,
+                            doc_status.value,
+                            existing_document["row_id"],
+                        ),
+                    )
+                    reconciled_hashes.add(doc_hash)
                 continue
             existing_hashes.add(doc_hash)
-            new_pdfs.append((pdf_path, doc_hash))
+            new_pdfs.append((pdf_path, doc_hash, qdrant_doc_id))
 
         if not new_pdfs:
             connection.commit()
@@ -131,13 +186,17 @@ def register_existing_pdfs(db_path: str, pdfs_dir: str) -> tuple[int, int, int]:
 
         batch = Batch(batch_id=str(uuid.uuid4()), doc_count=len(new_pdfs))
         _insert_batch(connection, batch)
-        for pdf_path, doc_hash in new_pdfs:
+        for pdf_path, doc_hash, qdrant_doc_id in new_pdfs:
             document = Document(
-                doc_id=str(uuid.uuid4()),
+                doc_id=qdrant_doc_id or str(uuid.uuid4()),
                 batch_id=batch.batch_id,
                 doc_hash=doc_hash,
                 doc_name=pdf_path.name,
-                doc_status=DocStatus.COMPLETED,
+                doc_status=(
+                    DocStatus.COMPLETED
+                    if qdrant_doc_id
+                    else DocStatus.UPLOADED
+                ),
             )
             _insert_document(connection, document)
 
