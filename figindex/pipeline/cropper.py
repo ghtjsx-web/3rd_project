@@ -5,7 +5,16 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 import fitz  # PyMuPDF
 from PIL import Image
-from shared.coords import px_to_norm
+from shared.coords import px_to_norm, pt_to_norm, union_bbox
+from shared.schemas import ElementType
+
+# 논문식 캡션 "Fig. 1." — 그림 아래에 붙는다. 블록 맨 앞에서만 인정해 본문 속 "(Fig. 4(a)…)" 언급은 거른다 (0.1.3)
+FIG_ABBREV_CAPTION = re.compile(r"^\s*Fig\.\s*\d+[\.\:]", re.IGNORECASE)
+# 그림 아래 캡션 위쪽에서 그림으로 볼 이미지: 페이지 면적의 0.5% 이상, 캡션과의 간격 페이지 높이 5% 이내
+FIG_MIN_IMAGE_AREA_RATIO = 0.005
+FIG_MAX_GAP_RATIO = 0.05
+# 여러 칸짜리 그림((a)(b)(c))은 서로 이 간격(페이지 높이 3%) 안에 쌓인 이미지까지 한 그림으로 묶는다
+FIG_STACK_GAP_RATIO = 0.03
 
 
 class BBoxHelper:
@@ -132,6 +141,16 @@ class PDFCropper:
             bx0, by0, bx1, by1, btext = b[:5]
             clean_text = btext.strip()
             match = chart_pattern.search(clean_text)
+            if not match and FIG_ABBREV_CAPTION.match(clean_text) and by0 > 50:
+                # 논문식 "Fig. N." 캡션: 그림은 캡션 위에 있다. 위쪽 이미지를 묶어 후보로 만든다 (0.1.3)
+                fig_box = self._figure_box_above_caption(page, (bx0, by0, bx1, by1))
+                if fig_box is not None:
+                    candidates.append({
+                        "bbox": fig_box,
+                        "hint_type": ElementType.CHART.value,
+                        "caption": clean_text.split("\n")[0].strip(),
+                    })
+                continue
             if match and by0 > 50 and by1 < ph - 60:
                 caption_line = clean_text.split("\n")[0].strip()
 
@@ -172,6 +191,57 @@ class PDFCropper:
                 filtered.append(cand)
 
         return filtered
+
+    @staticmethod
+    def _figure_box_above_caption(
+        page: fitz.Page,
+        caption_rect_pt: Tuple[float, float, float, float],
+    ) -> Optional[Tuple[float, float, float, float]]:
+        """캡션 바로 위에 붙은 이미지(여러 칸이면 쌓인 이미지 전부)와 캡션을 감싸는 박스.
+
+        반환은 이 파일의 후보 형식인 (ymin, xmin, ymax, xmax) 정규화 값. 위쪽에 이미지가 없으면 None.
+        """
+        pw, ph = page.rect.width, page.rect.height
+        if pw <= 0 or ph <= 0:
+            return None
+        cx0, cy0, cx1, cy1 = caption_rect_pt
+        min_area = pw * ph * FIG_MIN_IMAGE_AREA_RATIO
+
+        images = []
+        for info in page.get_image_info():
+            r = fitz.Rect(info.get("bbox", (0, 0, 0, 0)))
+            if r.is_empty or r.width * r.height < min_area:
+                continue
+            # 캡션보다 위에 끝나고(2pt 겹침 허용) 가로로 캡션과 겹치는 이미지만
+            if r.y1 > cy0 + 2.0 or r.x1 < cx0 - 20.0 or r.x0 > cx1 + 20.0:
+                continue
+            images.append(r)
+        if not images:
+            return None
+
+        # 캡션에 가장 가까운(아래쪽 끝이 가장 낮은) 이미지에서 시작
+        images.sort(key=lambda r: r.y1, reverse=True)
+        nearest = images[0]
+        if cy0 - nearest.y1 > ph * FIG_MAX_GAP_RATIO:
+            return None
+        group = [nearest]
+        top = nearest.y0
+        # 위로 쌓인 이미지((a)(b)(c) 칸)를 차례로 묶는다
+        changed = True
+        while changed:
+            changed = False
+            for r in images:
+                if r in group:
+                    continue
+                if r.y1 >= top - ph * FIG_STACK_GAP_RATIO:
+                    group.append(r)
+                    top = min(top, r.y0)
+                    changed = True
+
+        boxes = [pt_to_norm(tuple(r), pw, ph) for r in group]
+        boxes.append(pt_to_norm(caption_rect_pt, pw, ph))
+        x0, y0, x1, y1 = union_bbox(boxes)
+        return (y0, x0, y1, x1)
 
     @staticmethod
     def _horizontal_overlap_ratio(box_x0: float, box_x1: float, line_x0: float, line_x1: float) -> float:

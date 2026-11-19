@@ -35,9 +35,11 @@ from shared.sparse import build_sparse_vector, generate_point_id
 try:
     from cropper import PDFCropper
     from extractor import MultimodalExtractor
+    from pdf_text import is_toc_page
 except ImportError:
     from pipeline.cropper import PDFCropper
     from pipeline.extractor import MultimodalExtractor
+    from pipeline.pdf_text import is_toc_page
 
 
 DOC_TYPE_CODE_MAP: Dict[str, str] = {
@@ -745,23 +747,35 @@ class ExtractionPipelineOrchestrator:
             ]
         )
 
-    def process_pdf(self, pdf_path: Path, max_pages: int = 15, max_elements_per_pdf: int = 4) -> List[ElementSearchPayload]:
+    def process_pdf(
+        self,
+        pdf_path: Path,
+        max_pages: Optional[int] = 15,
+        max_elements_per_pdf: int = 4,
+        doc_id: Optional[str] = None,
+        skip_toc: bool = True,
+    ) -> List[ElementSearchPayload]:
         """
         Process a single PDF document:
         1. Extract document-level metadata & create Document object
         2. Detect and crop visual elements across pages
         3. Analyze with Gemini Multimodal model to get Element objects
         4. Compose ElementSearchPayload and upsert to Qdrant collection
+
+        - max_pages=None이면 전체 페이지를 본다.
+        - doc_id를 주면 그 값을 요소의 doc_id로 쓴다 (업로드 DB의 doc_id와 맞추기, 0.1.3).
+        - skip_toc=True이면 목차·표 목차 페이지는 도표를 찾지 않고 건너뛴다 (0.1.3).
+        처리한 문서의 Document는 self.last_document에 남는다 (index_document가 사용).
         """
         doc = fitz.open(str(pdf_path))
         doc_name = pdf_path.name
-        total_pages = min(len(doc), max_pages)
+        total_pages = len(doc) if max_pages is None else min(len(doc), max_pages)
 
         doc_metadata = self.extract_document_metadata(doc, doc_name)
         print(f"  -> Extracted Metadata: 유형={doc_metadata['doc_type']}, 대상={doc_metadata.get('target')}, 출처={doc_metadata.get('source_org')}, 발행일={doc_metadata['publish_date']}, 종목={doc_metadata.get('ticker')}")
 
         # 1회 문서 객체(Document) 생성 (메모리에서만 유지)
-        doc_id = self.get_doc_id(doc_name)
+        doc_id = doc_id or self.get_doc_id(doc_name)
         try:
             with open(pdf_path, "rb") as f:
                 doc_hash = hashlib.sha256(f.read()).hexdigest()
@@ -810,6 +824,8 @@ class ExtractionPipelineOrchestrator:
 
         pending_payloads: List[ElementSearchPayload] = []
         extracted_count = 0
+        toc_pages_skipped: List[int] = []
+        self.last_document = document
 
         try:
             for p_idx in range(1, total_pages + 1):
@@ -817,6 +833,10 @@ class ExtractionPipelineOrchestrator:
                     break
 
                 page = doc[p_idx - 1]
+                if skip_toc and is_toc_page(page):
+                    toc_pages_skipped.append(p_idx)
+                    print(f"    [P.{p_idx}] 목차 페이지라 건너뜀")
+                    continue
                 candidates = self.cropper.detect_candidate_boxes(page)
                 if not candidates:
                     continue
@@ -878,4 +898,33 @@ class ExtractionPipelineOrchestrator:
             raise
 
         doc.close()
+        document.extra_metadata["element_count"] = len(indexed_elements)
+        document.extra_metadata["toc_pages_skipped"] = toc_pages_skipped
         return indexed_elements
+
+    def index_document(
+        self,
+        pdf_path: Path,
+        doc_id: str,
+        max_pages: Optional[int] = None,
+        max_elements_per_pdf: int = 40,
+    ) -> Document:
+        """업로드한 PDF 1건을 처리하고 문서 메타데이터를 채운 Document를 돌려준다 (작업자용, 0.1.3).
+
+        - 요소는 받은 doc_id로 Qdrant에 저장한다 (업로드 DB와 같은 doc_id).
+        - 기본은 전체 페이지, 도표 40개, 목차 건너뛰기.
+        - 도표가 0개여도 정상 완료다 (extra_metadata.element_count = 0).
+        - 실패하면 예외를 그대로 던지고, Qdrant에는 아무것도 저장하지 않는다.
+        """
+        self.process_pdf(
+            Path(pdf_path),
+            max_pages=max_pages,
+            max_elements_per_pdf=max_elements_per_pdf,
+            doc_id=doc_id,
+            skip_toc=True,
+        )
+        document = self.last_document
+        document.doc_status = DocStatus.COMPLETED
+        document.doc_error = None
+        document.extra_metadata["pipeline_version"] = PIPELINE_VERSION
+        return document
