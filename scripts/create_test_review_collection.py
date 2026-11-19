@@ -41,7 +41,8 @@ def make_request(url: str, method: str = "GET", data: dict = None, timeout: floa
         raise
 
 
-PROTECTED_COLLECTIONS = {"figindex_elements", "figindex_elements_v2"}
+# figindex_test_upload: 업로드 작업자(worker)가 결과를 쌓는 컬렉션. 서비스로 옮기기 전이라 지우면 안 된다.
+PROTECTED_COLLECTIONS = {"figindex_elements", "figindex_elements_v2", "figindex_test_upload"}
 
 
 def validate_target_collection(source_collection: str, target_collection: str):
