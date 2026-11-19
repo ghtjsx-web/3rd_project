@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { formatSourceTarget } from "../lib/docTypeLabels";
 import { TableData, VisualElement } from "../lib/types";
 
@@ -14,6 +14,8 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
   const [loading, setLoading] = useState<boolean>(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ id: string; text: string; type: "success" | "error" } | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [collectionName, setCollectionName] = useState<string | null>(null);
 
   // Admin Auth States
   const [adminPassword, setAdminPassword] = useState<string>("");
@@ -34,6 +36,25 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
       }
     >
   >({});
+
+  // Check backend health/collection on mount
+  useEffect(() => {
+    async function checkCollection() {
+      if (!backendUrl) return;
+      try {
+        const res = await fetch(`${backendUrl}/health`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.collection_name) {
+            setCollectionName(data.collection_name);
+          }
+        }
+      } catch (err) {
+        console.warn("컬렉션 상태 확인 실패:", err);
+      }
+    }
+    checkCollection();
+  }, [backendUrl]);
 
   // Check existing session token on mount
   useEffect(() => {
@@ -86,6 +107,7 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
     setIsAuthenticated(false);
     setPasswordInput("");
     setElements([]);
+    setActiveId(null);
   };
 
   async function fetchReviewQueue(pw = adminPassword) {
@@ -107,6 +129,13 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
       if (res.ok) {
         const data: VisualElement[] = await res.json();
         setElements(data);
+
+        // Set active element to first item or retain if still valid
+        if (data.length > 0) {
+          setActiveId((prev) => (prev && data.some((e) => e.element_id === prev) ? prev : data[0].element_id));
+        } else {
+          setActiveId(null);
+        }
 
         // Initialize editable form drafts
         const initialDrafts: Record<string, any> = {};
@@ -142,6 +171,16 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
   const handleDecision = async (elementId: string, action: "APPROVE" | "REJECT") => {
     setProcessingId(elementId);
     setFeedbackMsg(null);
+
+    // 서비스 컬렉션(figindex_elements_v2) 보호 안전 가드
+    if (collectionName === "figindex_elements_v2") {
+      const guardMsg = "⚠️ 서비스 컬렉션(figindex_elements_v2)에서는 승인·반려를 실행할 수 없습니다. 시험 컬렉션 연결 후 진행해 주세요.";
+      alert(guardMsg);
+      setFeedbackMsg({ id: elementId, text: guardMsg, type: "error" });
+      setProcessingId(null);
+      return;
+    }
+
     const draft = drafts[elementId];
 
     let parsedTableData = null;
@@ -189,9 +228,26 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
 
       setFeedbackMsg({ id: elementId, text: msgText, type: "success" });
 
-      // Remove from pending list after short animation
+      // 처리가 성공한 뒤에만 다음 검수 항목으로 이동 및 목록에서 제거
       setTimeout(() => {
-        setElements((prev) => prev.filter((x) => x.element_id !== elementId));
+        setElements((prev) => {
+          const currentIndex = prev.findIndex((x) => x.element_id === elementId);
+          const nextElements = prev.filter((x) => x.element_id !== elementId);
+          if (nextElements.length > 0) {
+            const nextIndex = currentIndex < nextElements.length ? currentIndex : nextElements.length - 1;
+            const nextItem = nextElements[nextIndex];
+            setActiveId(nextItem.element_id);
+            setTimeout(() => {
+              const targetEl = document.getElementById(`review-card-${nextItem.element_id}`);
+              if (targetEl) {
+                targetEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }
+            }, 50);
+          } else {
+            setActiveId(null);
+          }
+          return nextElements;
+        });
         setFeedbackMsg(null);
         if (action === "APPROVE" && onItemApproved) {
           onItemApproved();
@@ -203,6 +259,64 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
       setProcessingId(null);
     }
   };
+
+  // Keyboard shortcut listener: A = APPROVE, R = REJECT
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. 시스템/브라우저 조합 키(Ctrl, Meta, Alt 등)가 눌려있으면 기본 동작 유지
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // 2. 한글 IME 조합 중에는 단축키 무시
+      if (e.isComposing) return;
+
+      const key = e.key.toUpperCase();
+      if (key !== "A" && key !== "R") return;
+
+      // 3. 유형 선택이나 캡션 수정 등 입력·편집 중에는 단축키 동작 차단
+      const target = e.target as HTMLElement | null;
+      const activeEl = document.activeElement as HTMLElement | null;
+      const el = target || activeEl;
+
+      if (el) {
+        const tagName = el.tagName ? el.tagName.toUpperCase() : "";
+        // 캡션 수정, 요약문, 표 데이터 수치 JSON 등 input, textarea, select에 포커스된 경우
+        if (
+          tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          tagName === "SELECT" ||
+          el.isContentEditable ||
+          el.getAttribute("contenteditable") === "true" ||
+          el.getAttribute("role") === "textbox"
+        ) {
+          return;
+        }
+
+        // 유형 선택 등 편집 폼(data-editor-form="true") 내부 요소에 포커스가 있는 경우
+        if (el.closest("[data-editor-form='true']")) {
+          return;
+        }
+      }
+
+      // 4. 인증되지 않았거나 검수 대기 항목이 없거나 처리 중인 경우 동작하지 않음
+      if (!isAuthenticated || elements.length === 0 || processingId) return;
+
+      // 5. 현재 활성화된 검수 대상 항목 선정
+      const targetElem = (activeId && elements.find((x) => x.element_id === activeId)) || elements[0];
+      if (!targetElem) return;
+
+      e.preventDefault();
+      if (key === "A") {
+        handleDecision(targetElem.element_id, "APPROVE");
+      } else if (key === "R") {
+        handleDecision(targetElem.element_id, "REJECT");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAuthenticated, elements, activeId, processingId, drafts, adminPassword, collectionName]);
 
   // 1. Password Protection Gate (Not Authenticated)
   if (!isAuthenticated) {
@@ -271,17 +385,36 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
             🛡️
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-bold text-sm text-amber-900">
                 Human-in-the-Loop 관리자 검수 대기열
               </h3>
               <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold border border-emerald-300">
                 관리자 인증 완료 🟢
               </span>
+              {collectionName === "figindex_elements_v2" ? (
+                <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full font-bold border border-rose-300" title="실제 서비스 데이터 보호 중">
+                  🛡️ 서비스 컬렉션 ({collectionName}) - 승인·반려 보호됨
+                </span>
+              ) : collectionName ? (
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold border border-indigo-300">
+                  🧪 시험 컬렉션 ({collectionName})
+                </span>
+              ) : null}
             </div>
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-amber-700 mt-0.5">
               AI 확신도가 0.80 미만인 도표입니다. 오류를 수정한 뒤 <strong>[승인]</strong>하면 즉시 일반 검색 결과에 노출됩니다.
             </p>
+            {/* Keyboard shortcut guide */}
+            <div className="flex items-center gap-2 text-[11px] font-medium text-amber-900 mt-2">
+              <span className="text-amber-800 font-bold">⌨️ 단축키:</span>
+              <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded text-[11px] font-bold shadow-xs">A</kbd>
+              <span>승인</span>
+              <span className="text-amber-400">|</span>
+              <kbd className="px-1.5 py-0.5 bg-white border border-amber-300 rounded text-[11px] font-bold shadow-xs">R</kbd>
+              <span>반려</span>
+              <span className="text-[10px] text-amber-600">(유형 선택·캡션 등 입력/편집 중에는 비활성화)</span>
+            </div>
           </div>
         </div>
 
@@ -316,7 +449,7 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
         </div>
       ) : (
         <div className="space-y-6">
-          {elements.map((elem) => {
+          {elements.map((elem, index) => {
             const draft = drafts[elem.element_id] || {
               element_type: elem.element_type,
               caption: elem.caption || "",
@@ -326,15 +459,27 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
 
             const isProcessing = processingId === elem.element_id;
             const currentFeedback = feedbackMsg?.id === elem.element_id ? feedbackMsg : null;
+            const isActive = activeId === elem.element_id || (!activeId && index === 0);
 
             return (
               <div
                 key={elem.element_id}
-                className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 transition-all hover:border-indigo-300"
+                id={`review-card-${elem.element_id}`}
+                onClick={() => setActiveId(elem.element_id)}
+                className={`bg-white rounded-2xl overflow-hidden p-5 transition-all cursor-pointer ${
+                  isActive
+                    ? "ring-2 ring-indigo-500 border-indigo-500 shadow-md"
+                    : "border border-slate-200 shadow-sm hover:border-slate-300"
+                }`}
               >
                 {/* Status Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100 text-xs">
                   <div className="flex items-center gap-2">
+                    {isActive && (
+                      <span className="bg-indigo-600 text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                        👉 현재 검수 항목 [A 승인 / R 반려]
+                      </span>
+                    )}
                     <span className="font-bold text-slate-700">
                       {[formatSourceTarget(elem), elem.doc_name].filter(Boolean).join(" | ")}
                     </span>
@@ -349,7 +494,7 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
                 </div>
 
                 {/* Main 2-Column: Left Crop vs Right Editor */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start cursor-default" onClick={(e) => e.stopPropagation()}>
                   {/* Left: Original Cropped Image */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-slate-500">
@@ -373,8 +518,8 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
                     </div>
                   </div>
 
-                  {/* Right: Interactive Editing Form */}
-                  <div className="space-y-4">
+                  {/* Right: Interactive Editing Form (단축키 차단 영역) */}
+                  <div className="space-y-4" data-editor-form="true">
                     {/* Element Type Selector */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -467,19 +612,23 @@ export default function ReviewTab({ backendUrl, onItemApproved }: ReviewTabProps
                           type="button"
                           onClick={() => handleDecision(elem.element_id, "REJECT")}
                           disabled={isProcessing}
-                          className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 transition-colors disabled:opacity-50"
+                          title="반려 처리 (단축키: R)"
+                          className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 transition-colors disabled:opacity-50 flex items-center gap-1"
                         >
-                          반려 (REJECT)
+                          <span>반려</span>
+                          <kbd className="bg-rose-200/60 px-1 py-0.2 rounded text-[10px]">R</kbd>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => handleDecision(elem.element_id, "APPROVE")}
                           disabled={isProcessing}
+                          title="승인 및 검색 노출 (단축키: A)"
                           className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition-colors disabled:opacity-50 flex items-center gap-1.5"
                         >
                           {isProcessing && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                          <span>승인 및 검색 노출 (APPROVE)</span>
+                          <span>승인 및 검색 노출</span>
+                          <kbd className="bg-emerald-700/80 px-1 py-0.2 rounded text-[10px]">A</kbd>
                         </button>
                       </div>
                     </div>
