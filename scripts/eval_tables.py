@@ -6,7 +6,7 @@ table_valid_rate = TABLE 요소 중 table_data가 TableData 검증을 통과하�
 cell_accuracy    = 수치 정답셋의 숫자 셀 중 값이 같은 셀 수 ÷ 숫자 셀 수
                    셀은 (첫 열 행 라벨, 열 이름)으로 맞추고, 못 찾은 셀은 틀린 것으로 센다.
                    카드가 없는 표('요소 없음')의 셀도 모두 틀린 것으로 들어간다.
-아래 두 값은 위 값을 원인별로 나눠 보기 위한 보조 지표다 (11-19 팀장 결정, glossary 12절 추가 대기).
+아래 두 값은 위 값을 원인별로 나눠 보기 위한 보조 지표다 (11-19 팀장 결정, glossary 12절).
 gt_table_coverage       = 정답 표 중 카드가 있고 연결된 표 수 ÷ 정답 표 수 (표를 빠짐없이 뽑았는지)
 cell_accuracy_extracted = 카드가 있는 표의 숫자 셀만 채점한 cell_accuracy (뽑은 표의 숫자를 맞게 읽었는지)
 

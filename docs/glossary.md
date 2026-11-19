@@ -174,6 +174,8 @@ DocLayout-YOLO의 클래스 이름은 모델 출력 그대로 씁니다. 1단계
 | 크롭 재현율 | `crop_recall` | 탐지 정답셋 요소 중, IoU ≥ 0.5인 요소가 있는 정답 수 ÷ 정답 요소 수 | ≥ 0.85 |
 | 유효 JSON 비율 | `table_valid_rate` | TABLE 요소 중 `TableData` 검증 통과 수 ÷ TABLE 요소 수 | ≥ 0.90 |
 | 수치 일치율 | `cell_accuracy` | 수치 정답셋의 숫자 셀 중 값이 같은 셀 수 ÷ 숫자 셀 수. 셀은 (첫 열 행 라벨, 열 이름)으로 맞추고, 못 찾은 셀은 틀린 것으로 셈 | ≥ 0.95 |
+| 정답 표 추출률 | `gt_table_coverage` | 수치 정답셋 표 중 같은 표의 카드가 있고 연결된 표 수 ÷ 정답 표 수 (`cell_accuracy`의 보조 지표, 표를 빠짐없이 뽑았는지) | 측정 후 설정 |
+| 추출 표 수치 일치율 | `cell_accuracy_extracted` | 카드가 있는 정답 표의 숫자 셀만 채점한 `cell_accuracy` (보조 지표, 뽑은 표의 숫자를 맞게 읽었는지) | ≥ 0.95 |
 | 검색 정확도 | `precision_at_5` | 검색어마다 (상위 5개 중 검색 정답셋에 있는 요소 수) ÷ min(5, 그 검색어의 정답 수), 20개 검색어 평균. 정답이 5개 미만인 검색어도 모두 찾으면 1.0 | ≥ 0.75 |
 | 문서 처리 시간 | `doc_latency_sec` | `UPLOADED` → `COMPLETED`까지 걸린 초, 10페이지 문서 기준 | ≤ 15초 |
 | 일괄 처리 시간 | `batch_latency_sec` | 등록 작업 생성 → 소속 문서 전부 `COMPLETED`/`FAILED`/`DUPLICATE`까지 걸린 초 | 측정 후 설정 |
