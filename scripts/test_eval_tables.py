@@ -110,3 +110,20 @@ def test_gt_file_loads_numeric_cells_only():
     assert len(cells) == 30
     assert len(cells["T01"]) == 15
     assert sum(len(v) for v in cells.values()) == 790
+
+
+def test_coverage_and_extracted_accuracy_and_wrong_document_link():
+    gt_cells = {"T01": [gt("매출", "2024", 1202.2), gt("매출", "2025", 0)],
+                "T02": [gt("a", "b", 1)], "T03": [gt("매출", "2024", 1202.2)]}
+    gt_tables = {"T01": {"doc_name": "A.pdf", "page_number": 2}, "T02": {"doc_name": "B.pdf", "page_number": 1},
+                 "T03": {"doc_name": "C.pdf", "page_number": 7}}
+    links = {"T01": {"element_id": "fig-1", "link_status": "같은 표"},
+             "T02": {"element_id": "", "link_status": "요소 없음"},
+             "T03": {"element_id": "fig-1", "link_status": "같은 표"}}   # 다른 문서의 카드를 적은 경우
+    payloads = {"fig-1": {"element_id": "fig-1", "review_status": APPROVED, "table_data": HANWHA_T01,
+                          "doc_name": "A.pdf", "page_number": 2}}
+    r = eval_cell_accuracy(gt_cells, links, payloads, gt_tables)
+    assert r["scored_cells"] == 4 and r["correct_cells"] == 1          # glossary 정의: 카드 없는 표·연결 오류도 틀림
+    assert r["extracted_tables"] == 1 and abs(r["gt_table_coverage"] - 1 / 3) < 1e-9
+    assert r["cell_accuracy_extracted"] == 0.5
+    assert r["per_table"][2]["state"].startswith("연결 오류")

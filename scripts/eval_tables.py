@@ -5,6 +5,10 @@ table_valid_rate = TABLE 요소 중 table_data가 TableData 검증을 통과하�
                    그 규모는 pipeline_version별 '저장 규칙 위반'으로 따로 보고한다.
 cell_accuracy    = 수치 정답셋의 숫자 셀 중 값이 같은 셀 수 ÷ 숫자 셀 수
                    셀은 (첫 열 행 라벨, 열 이름)으로 맞추고, 못 찾은 셀은 틀린 것으로 센다.
+                   카드가 없는 표('요소 없음')의 셀도 모두 틀린 것으로 들어간다.
+아래 두 값은 위 값을 원인별로 나눠 보기 위한 보조 지표다 (11-19 팀장 결정, glossary 12절 추가 대기).
+gt_table_coverage       = 정답 표 중 카드가 있고 연결된 표 수 ÷ 정답 표 수 (표를 빠짐없이 뽑았는지)
+cell_accuracy_extracted = 카드가 있는 표의 숫자 셀만 채점한 cell_accuracy (뽑은 표의 숫자를 맞게 읽었는지)
 
 정답셋 (정답셋 작업 시트에서 옮긴 것, 원문 기준)
     figindex/data/gt/table/cells.csv   표의 셀 1칸 = 1줄 ('수치표' 탭)
@@ -18,6 +22,7 @@ cell_accuracy    = 수치 정답셋의 숫자 셀 중 값이 같은 셀 수 ÷ �
 - 행과 열이 바뀌어 저장된 표는 (열 이름, 행 라벨)로 한 번 더 찾고, transposed_cells로 따로 센다.
 - links.csv에 아직 없는 표는 채점하지 않고 '미연결'로 보고한다.
 - 연결 판정이 '다른 표가 잡힘'·'요소 없음'이거나 요소가 컬렉션에 없거나 반려됐으면 그 표의 셀은 모두 틀린 것으로 센다.
+- 연결된 요소의 문서·페이지가 정답과 다르면 '연결 오류'로 보고하고 그 표의 셀은 모두 틀린 것으로 센다.
 
 사용법 (Qdrant 실행 중, 저장소 루트에서):
     python scripts/eval_tables.py
@@ -140,6 +145,15 @@ def eval_table_valid_rate(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
 # cell_accuracy
 # ---------------------------------------------------------------------------
 
+def load_gt_tables(path: Path) -> Dict[str, Dict[str, Any]]:
+    """표 ID → {doc_name, page_number} (연결 검증용)."""
+    tables: Dict[str, Dict[str, Any]] = {}
+    with path.open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            tables.setdefault(row["table_id"], {"doc_name": row["doc_name"], "page_number": int(row["page_number"])})
+    return tables
+
+
 def load_gt_cells(path: Path) -> Dict[str, List[Dict[str, Any]]]:
     """표 ID → 숫자 셀 목록. 숫자가 아닌 정답 셀은 뺀다."""
     by_table: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -208,10 +222,13 @@ def score_table(gt_cells: List[Dict[str, Any]], table_data: Dict[str, Any]) -> L
 
 
 def eval_cell_accuracy(gt: Dict[str, List[Dict[str, Any]]], links: Dict[str, Dict[str, str]],
-                       payload_by_id: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+                       payload_by_id: Dict[str, Dict[str, Any]],
+                       gt_tables: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     per_table = []
     detail = []
     total = correct = transposed = violations = 0
+    extracted_tables = extracted_cells = extracted_correct = 0
+    gt_tables = gt_tables or {}
     for table_id in sorted(gt):
         cells = gt[table_id]
         link = links.get(table_id)
@@ -229,6 +246,11 @@ def eval_cell_accuracy(gt: Dict[str, List[Dict[str, Any]]], links: Dict[str, Dic
         elif payload.get("review_status") == ReviewStatus.REJECTED.value:
             state = "반려된 요소"
             scored = [{**c, "actual": None, "result": "칸 없음", "rule_violation": False} for c in cells]
+        elif table_id in gt_tables and (
+                payload.get("doc_name") != gt_tables[table_id]["doc_name"]
+                or payload.get("page_number") != gt_tables[table_id]["page_number"]):
+            state = f"연결 오류 (요소는 {payload.get('doc_name')} p.{payload.get('page_number')})"
+            scored = [{**c, "actual": None, "result": "칸 없음", "rule_violation": False} for c in cells]
         else:
             state = "채점"
             scored = score_table(cells, payload.get("table_data") or {})
@@ -238,6 +260,10 @@ def eval_cell_accuracy(gt: Dict[str, List[Dict[str, Any]]], links: Dict[str, Dic
         rv = sum(1 for s in scored if s["rule_violation"])
         total += len(scored)
         correct += ok
+        if state == "채점":
+            extracted_tables += 1
+            extracted_cells += len(scored)
+            extracted_correct += ok
         transposed += tr
         violations += rv
         per_table.append({"table_id": table_id, "element_id": element_id, "state": state,
@@ -250,6 +276,11 @@ def eval_cell_accuracy(gt: Dict[str, List[Dict[str, Any]]], links: Dict[str, Dic
                            "result": s["result"]})
     return {
         "cell_accuracy": correct / total if total else None,
+        "gt_table_coverage": extracted_tables / len(per_table) if per_table else None,
+        "cell_accuracy_extracted": extracted_correct / extracted_cells if extracted_cells else None,
+        "extracted_tables": extracted_tables,
+        "extracted_cells": extracted_cells,
+        "extracted_correct": extracted_correct,
         "scored_cells": total,
         "correct_cells": correct,
         "transposed_cells": transposed,
@@ -278,7 +309,8 @@ def main():
     payload_by_id = {p.get("element_id"): p for p in payloads if p.get("element_id")}
 
     valid = eval_table_valid_rate(payloads)
-    cells = eval_cell_accuracy(load_gt_cells(Path(args.cells)), load_links(Path(args.links)), payload_by_id)
+    cells = eval_cell_accuracy(load_gt_cells(Path(args.cells)), load_links(Path(args.links)), payload_by_id,
+                               load_gt_tables(Path(args.cells)))
 
     print(f"[table_valid_rate] {valid['valid_count']}/{valid['table_count']} = {valid['table_valid_rate']:.3f} (목표 ≥ 0.90)")
     for reason, n in sorted(valid["invalid_reasons"].items(), key=lambda x: -x[1]):
@@ -300,7 +332,11 @@ def main():
     if cells["cell_accuracy"] is None:
         print("  채점할 셀이 없습니다 (links.csv에 연결된 표가 없음).")
     else:
-        print(f"  cell_accuracy = {cells['correct_cells']}/{cells['scored_cells']} = {cells['cell_accuracy']:.3f} (목표 ≥ 0.95)")
+        print(f"  cell_accuracy = {cells['correct_cells']}/{cells['scored_cells']} = {cells['cell_accuracy']:.3f} (목표 ≥ 0.95, 카드 없는 표 포함)")
+        print(f"  ├ gt_table_coverage = {cells['extracted_tables']}/{cells['total_tables']} = {cells['gt_table_coverage']:.3f} (카드가 있는 정답 표 비율)")
+        if cells["cell_accuracy_extracted"] is not None:
+            print(f"  └ cell_accuracy_extracted = {cells['extracted_correct']}/{cells['extracted_cells']} = "
+                  f"{cells['cell_accuracy_extracted']:.3f} (카드가 있는 표 {cells['extracted_tables']}개만)")
         print(f"  규칙 미적용 칸 (쉼표·% 붙은 문자열로 저장됨): {cells['rule_violation_cells']}")
     unlinked = [t["table_id"] for t in cells["per_table"] if t["state"] == "미연결"]
     if unlinked:
