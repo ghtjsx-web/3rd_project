@@ -45,6 +45,7 @@ from shared.compare import available_metrics, build_comparison
 from shared.normalize import METRIC_ALIASES
 from app.upload_store import append_review_log, get_batch_documents, persist_batch
 from shared.upload_db import RetryNotAllowed, retry_document
+from app.review_compare import caption_changed, table_data_changed
 
 
 @asynccontextmanager
@@ -952,12 +953,14 @@ def submit_review_decision(element_id: str, req: ReviewActionRequest, _auth: Non
             payload["confidence_score"] = 1.0  # 관리자 검수 통과 완료
             if req.element_type:
                 payload["element_type"] = req.element_type.value if hasattr(req.element_type, "value") else str(req.element_type).upper()
-            if req.caption is not None:
+            # 화면은 고치지 않은 값도 함께 보내므로, 내용이 바뀐 경우에만 덮어쓴다.
+            # (형식 차이만으로 EDIT로 기록되지 않게 함)
+            if req.caption is not None and caption_changed(before_payload.get("caption"), req.caption):
                 payload["caption"] = req.caption
             if req.summary:
                 payload["summary"] = req.summary
-            if req.table_data is not None:
-                payload["table_data"] = req.table_data.model_dump() if hasattr(req.table_data, "model_dump") else (req.table_data.dict() if hasattr(req.table_data, "dict") else req.table_data)
+            if req.table_data is not None and table_data_changed(before_payload.get("table_data"), req.table_data):
+                payload["table_data"] = req.table_data.model_dump()
         elif normalized_review_action in ("REJECT", ReviewStatus.REJECTED.value):
             review_action = ReviewAction.REJECT
             payload["review_status"] = ReviewStatus.REJECTED.value
