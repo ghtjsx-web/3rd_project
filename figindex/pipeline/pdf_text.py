@@ -6,6 +6,7 @@ PDF 텍스트 레이어를 좌표 순서로 정렬하여 읽는 모듈.
 """
 import json
 import logging
+import re
 from typing import List, Optional, Tuple, Sequence
 
 try:
@@ -156,3 +157,43 @@ def read_text_in_bbox(page, bbox: Sequence[float]) -> str:
 
     return "\n".join(res for res in result_lines if res)
 
+
+
+# ---------------------------------------------------------------------------
+# 목차 페이지 판단 (0.1.3, 설계서 '색인 한도와 목차 거르기')
+# ---------------------------------------------------------------------------
+
+
+# 페이지 위쪽에 나오면 목차로 보는 제목 (공백을 뺀 소문자로 비교)
+TOC_HEADINGS = ("목차", "차례", "표목차", "그림목차", "contents", "tableofcontents", "listoftables", "listoffigures")
+# 점선 뒤 쪽번호로 끝나는 줄: '서론 ........ 3', '<표 3-2> 기술특성치 ··· 34'
+_TOC_LEADER_LINE = re.compile(r"(\.{3,}|·{3,}|…+|‥+|ㆍ{3,}|∙{3,}|•{3,}|-{4,}|_{4,})\s*\d{1,4}\s*$")
+# 쪽번호로 끝나는 줄 (점선 없이 띄어쓰기만 있는 목차용)
+_ENDS_WITH_PAGE_NO = re.compile(r"\D\s+\d{1,4}\s*$")
+
+
+def is_toc_text(text: str) -> bool:
+    """페이지 글자로 목차·표 목차·그림 목차 페이지인지 판단합니다.
+
+    - 점선 + 쪽번호로 끝나는 줄이 5줄 이상이고 전체 줄의 40% 이상이면 목차
+    - 위쪽 5줄 안에 목차 제목이 있고, 쪽번호로 끝나는 줄이 5줄 이상·전체의 50% 이상이면 목차
+    표의 숫자 행은 점선이 없고 제목도 없으므로 걸리지 않게 했습니다.
+    """
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if len(lines) < 5:
+        return False
+    leader = sum(1 for ln in lines if _TOC_LEADER_LINE.search(ln))
+    if leader >= 5 and leader / len(lines) >= 0.4:
+        return True
+    head = "".join("".join(ln.split()).lower() for ln in lines[:5])
+    if any(h in head for h in TOC_HEADINGS):
+        numbered = sum(1 for ln in lines if _ENDS_WITH_PAGE_NO.search(ln))
+        return numbered >= 5 and numbered / len(lines) >= 0.5
+    return False
+
+
+def is_toc_page(page) -> bool:
+    """PyMuPDF 페이지가 목차 페이지인지. 텍스트 레이어가 없으면 False (판단하지 않음)."""
+    if not has_text_layer(page):
+        return False
+    return is_toc_text(read_text_in_bbox(page, [0.0, 0.0, 1.0, 1.0]))
