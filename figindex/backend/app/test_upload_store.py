@@ -6,9 +6,11 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 from shared.schemas import Batch, DocStatus, Document
 from app.upload_store import persist_batch, register_existing_pdfs
+from app.register_existing_pdfs import read_qdrant_doc_ids_by_name
 
 
 class UploadStoreTests(unittest.TestCase):
@@ -129,27 +131,146 @@ class UploadStoreTests(unittest.TestCase):
         self.assertEqual(result[1].doc_error, result[0].doc_id)
         self.assertFalse((self.pdfs_dir / "second.pdf").exists())
 
-    def test_existing_pdf_registration_is_completed_and_idempotent(self) -> None:
+    def test_existing_pdf_registration_uses_qdrant_ids_and_is_idempotent(self) -> None:
         self.pdfs_dir.mkdir()
         (self.pdfs_dir / "old-a.pdf").write_bytes(b"indexed content a")
         (self.pdfs_dir / "old-a-copy.pdf").write_bytes(b"indexed content a")
         (self.pdfs_dir / "old-b.pdf").write_bytes(b"indexed content b")
+        qdrant_doc_id = str(uuid.uuid4())
+        qdrant_doc_ids = {"old-a.pdf": qdrant_doc_id}
 
-        first_run = register_existing_pdfs(str(self.db_path), str(self.pdfs_dir))
-        second_run = register_existing_pdfs(str(self.db_path), str(self.pdfs_dir))
+        first_run = register_existing_pdfs(
+            str(self.db_path), str(self.pdfs_dir), qdrant_doc_ids
+        )
+        second_run = register_existing_pdfs(
+            str(self.db_path), str(self.pdfs_dir), qdrant_doc_ids
+        )
 
         self.assertEqual(first_run, (3, 2, 1))
         self.assertEqual(second_run, (3, 0, 3))
-        with sqlite3.connect(str(self.db_path)) as connection:
+        connection = sqlite3.connect(str(self.db_path))
+        try:
+            connection.row_factory = sqlite3.Row
             self.assertEqual(
                 connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0],
                 2,
             )
-            statuses = {
-                row[0]
-                for row in connection.execute("SELECT doc_status FROM documents")
+            documents = {
+                row["doc_name"]: (row["doc_id"], row["doc_status"])
+                for row in connection.execute(
+                    "SELECT doc_id, doc_name, doc_status FROM documents"
+                )
             }
-        self.assertEqual(statuses, {DocStatus.COMPLETED.value})
+        finally:
+            connection.close()
+        self.assertEqual(
+            documents["old-a.pdf"], (qdrant_doc_id, DocStatus.COMPLETED.value)
+        )
+        self.assertEqual(
+            documents["old-b.pdf"][1], DocStatus.UPLOADED.value
+        )
+        self.assertEqual(len(documents), 2)
+
+    def test_qdrant_document_mapping_reads_all_pages_without_writes(self) -> None:
+        qdrant_doc_id_a = str(uuid.uuid4())
+        qdrant_doc_id_b = str(uuid.uuid4())
+
+        class FakeQdrantClient:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def scroll(self, **kwargs):
+                self.calls.append(kwargs)
+                if kwargs["offset"] is None:
+                    return [
+                        SimpleNamespace(
+                            payload={"doc_name": "old-a.pdf", "doc_id": qdrant_doc_id_a}
+                        )
+                    ], "next-page"
+                return [
+                    SimpleNamespace(
+                        payload={"doc_name": "old-a.pdf", "doc_id": qdrant_doc_id_a}
+                    ),
+                    SimpleNamespace(
+                        payload={"doc_name": "old-b.pdf", "doc_id": qdrant_doc_id_b}
+                    ),
+                    SimpleNamespace(payload={"caption": "No document metadata"}),
+                ], None
+
+        client = FakeQdrantClient()
+        result = read_qdrant_doc_ids_by_name(client, "test_collection")
+
+        self.assertEqual(
+            result,
+            {"old-a.pdf": qdrant_doc_id_a, "old-b.pdf": qdrant_doc_id_b},
+        )
+        self.assertEqual(len(client.calls), 2)
+        self.assertTrue(
+            all(call["with_payload"] == ["doc_name", "doc_id"] for call in client.calls)
+        )
+        self.assertTrue(all(call["with_vectors"] is False for call in client.calls))
+
+    def test_qdrant_document_mapping_rejects_conflicting_doc_ids(self) -> None:
+        class FakeQdrantClient:
+            def scroll(self, **_kwargs):
+                return [
+                    SimpleNamespace(payload={"doc_name": "old-a.pdf", "doc_id": "doc-a"}),
+                    SimpleNamespace(payload={"doc_name": "old-a.pdf", "doc_id": "doc-b"}),
+                ], None
+
+        with self.assertRaises(ValueError):
+            read_qdrant_doc_ids_by_name(FakeQdrantClient(), "test_collection")
+
+    def test_existing_registration_reconciles_prior_rows(self) -> None:
+        self.pdfs_dir.mkdir()
+        (self.pdfs_dir / "indexed.pdf").write_bytes(b"indexed content")
+        (self.pdfs_dir / "not-indexed.pdf").write_bytes(b"pending content")
+
+        initial_result = register_existing_pdfs(
+            str(self.db_path), str(self.pdfs_dir), {}
+        )
+        self.assertEqual(initial_result, (2, 2, 0))
+
+        connection = sqlite3.connect(str(self.db_path))
+        try:
+            connection.execute(
+                "UPDATE documents SET doc_name = 'old-' || doc_name, doc_status = ?",
+                (DocStatus.COMPLETED.value,),
+            )
+            original_ids = dict(
+                connection.execute("SELECT doc_name, doc_id FROM documents")
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        qdrant_doc_id = str(uuid.uuid4())
+        reconciled_result = register_existing_pdfs(
+            str(self.db_path),
+            str(self.pdfs_dir),
+            {"indexed.pdf": qdrant_doc_id},
+        )
+        self.assertEqual(reconciled_result, (2, 0, 2))
+
+        connection = sqlite3.connect(str(self.db_path))
+        try:
+            connection.row_factory = sqlite3.Row
+            documents = {
+                row["doc_name"]: (row["doc_id"], row["doc_status"])
+                for row in connection.execute(
+                    "SELECT doc_id, doc_name, doc_status FROM documents"
+                )
+            }
+        finally:
+            connection.close()
+
+        self.assertEqual(
+            documents["indexed.pdf"], (qdrant_doc_id, DocStatus.COMPLETED.value)
+        )
+        self.assertEqual(
+            documents["not-indexed.pdf"],
+            (original_ids["old-not-indexed.pdf"], DocStatus.UPLOADED.value),
+        )
 
 
 if __name__ == "__main__":
