@@ -6,9 +6,9 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-19 오전. 수치 정답셋 채점 준비 완료, 예전 표 297개 저장 형태 정리(v2 반영). 팀원3이 표 30개의 element_id를 연결하는 중. 다음은 업로드→파이프라인 연결 설계
-2. **방금 한 일과 결과 (2026-11-19)**: 정답셋 작업 시트에 '수치표_연결' 탭 추가(T01 예시 fig-1df2783f1cd8, 15칸 모두 일치). 시트 '수치표' 탭을 `figindex/data/gt/table/cells.csv`(표 30개, 숫자 셀 790개)로, 연결을 `links.csv`로 옮김. `scripts/eval_tables.py`(table_valid_rate·cell_accuracy) 작성. 첫 측정 table_valid_rate 0.998(488/489)이었으나 숫자를 문자열로 저장한 표가 300개(0.0.0·0.1.0)라 `scripts/recoerce_tables.py`로 297개를 정리해 v2 반영(시험 컬렉션 `figindex_test_coerce` 경유, 확신도·검수 상태 변화 0). 위반 표 300 → 3. 역할 문서 3_정답셋 4단계를 연결 방식으로 수정
-3. **다음 할 일 (11-19)**: PIPELINE_VERSION 0.1.2 적용 후 `recoerce_tables.py` 다시 실행(`.802`·키 공백 차이 표 정리), 새 데이터 zip 만들기(내일 배포), 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토, 업로드→파이프라인 연결 설계. 팀원2는 11-19 결근
+1. **현재 단계**: 11-19 오전. 수치 정답셋 채점 준비 완료, PIPELINE_VERSION 0.1.2, 예전 표 305개 저장 형태 정리(v2 반영). 팀원3이 표 30개의 element_id를 연결하는 중. 다음은 업로드→파이프라인 연결 설계
+2. **방금 한 일과 결과 (2026-11-19)**: 정답셋 작업 시트에 '수치표_연결' 탭 추가(T01 예시 fig-1df2783f1cd8, 15칸 모두 일치). 시트 '수치표' 탭을 `figindex/data/gt/table/cells.csv`(표 30개, 숫자 셀 790개)로, 연결을 `links.csv`로 옮김. `scripts/eval_tables.py`(table_valid_rate·cell_accuracy) 작성. 첫 측정 table_valid_rate 0.998(488/489)이었으나 숫자를 문자열로 저장한 표가 300개(0.0.0·0.1.0)라 `scripts/recoerce_tables.py`로 297개를 정리해 v2 반영(시험 컬렉션 `figindex_test_coerce` 경유, 확신도·검수 상태 변화 0). 위반 표 300 → 3. 0.1.2(`.802`·키 공백 차이) 후 8개 더 정리(92칸) → 위반 표 2. 역할 문서 3_정답셋 4단계를 연결 방식으로 수정
+3. **다음 할 일 (11-19)**: 새 데이터 zip 만들기(표 정리 반영, 내일 배포), 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토, 업로드→파이프라인 연결 설계. 팀원2는 11-19 결근
 4. **막힌 것**: 없음
 5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
@@ -42,7 +42,7 @@
 - 검색 정식 측정 (새 zip, `eval_search.py`, 검색어 20개): `precision_at_5` 0.900, `search_latency_sec` 0.314 (첫 실행, 1번 검색어 1.66초 포함). 기업명+지표 검색(1~3번)은 0.6·0.5·0.4로 가장 낮음
 - 엔티티 사전 `figindex/data/entity_dictionary.csv`: 65개 (종목 50, 기관 9, 제품 6), 종목은 한국거래소 종목명 기준
 - 오분류 점검 88건 완료: 맞음 56, 틀림 32 (요소 아님 17, 잘림 13, 캡션 3, 노이즈 1, 유형 0)
-- 표 평가 (11-19 10:05, `eval_tables.py`): `table_valid_rate` 0.998 (488/489, 실패 fig-437d261937fb 표 없음), 저장 규칙 위반 표 3/489 (정리 전 300), `cell_accuracy` 15/15 (연결 1/30)
+- 표 평가 (11-19 10:05, `eval_tables.py`): `table_valid_rate` 0.998 (488/489, 실패 fig-437d261937fb 표 없음), 저장 규칙 위반 표 2/489 (정리 전 300, 0.1.2 재정리 후 2), `cell_accuracy` 15/15 (연결 1/30)
 - 수치 정답셋: `figindex/data/gt/table/cells.csv` 표 30개(T01~T30), 숫자 셀 790개(숫자 아닌 7칸 제외). 연결 `links.csv` 1/30 (T01, 팀원3 진행 중)
 - 업로드 DB `data/metadata.sqlite3`: 기존 PDF 141개 등록 (PC마다 `docker compose exec backend python -m app.register_existing_pdfs` 1회)
 - 상태 검사기 (11-18 16:00, Docker 포함): PASS=7, WARN=1(A6), FAIL=0, 단위 테스트 200건 통과
@@ -52,11 +52,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-19 10:40** | 0.1.2 규칙으로 표 재정리 (v2 쓰기) | (데이터) v2 8포인트 | `recoerce_tables.py`, `promote_test_to_service.py --test-collection figindex_test_coerce --apply`, `eval_tables.py` | 8개 반영(코스맥스 메리츠 p.2 키 공백 + `.802` 표 7개), 92칸 숫자로, 위반 표 3 → 2 | **PASS** |
 | **11-19 10:45** | PIPELINE_VERSION 0.1.2 (#35 표지 메타데이터 + `.802` 소수 + 행 키 공백 차이) | `shared/schemas.py`, `pipeline/table_parse.py`, `pipeline/test_table_parse.py`, `scripts/recoerce_tables.py`, `scripts/test_recoerce_tables.py` | `pytest pipeline/test_table_parse.py scripts/test_recoerce_tables.py scripts/test_eval_tables.py` 등 | 163건 통과 (Docker 밖이라 openai 필요한 표지 테스트 2개 파일은 미실행) | **PASS** |
 | **11-19 10:05** | 예전 표 숫자 문자열 정리 (v2 쓰기, 팀장 승인) | `scripts/recoerce_tables.py`, `scripts/test_recoerce_tables.py`, `scripts/eval_tables.py`, (데이터) v2 297포인트 | `recoerce_tables.py`, `promote_test_to_service.py --test-collection figindex_test_coerce --apply`, `eval_tables.py` | 297개 반영, 칸 15,123개 숫자로, 위반 표 300 → 3, 확신도·검수 상태 변화 0 | **PASS** |
 | **11-19 09:46** | 수치 정답셋 채점 준비 (팀원3 예시·정답셋 CSV·채점 스크립트) | `scripts/eval_tables.py`, `scripts/test_eval_tables.py`, `figindex/data/gt/table/cells.csv`·`links.csv`, `docs/roles/3_정답셋.md` | `pytest scripts/test_eval_tables.py` | 테스트 8건 통과, 정답 셀 790개, T01 15/15 일치 | **PASS** |
 | **11-18 18:12** | `update_status.py`가 Windows에서 한글 커밋 메시지를 못 읽던 문제 (cp949) | `scripts/update_status.py` | `python scripts/update_status.py` | git 호출 3곳 UTF-8로 읽음, 1절 '최신 커밋' 정상 표시 | **PASS** |
-| **11-18 18:06** | 검색 정식 측정 (팀원2 결근 대신 팀장) | 없음 | `python scripts/eval_search.py` | P@5 0.900, 응답 0.314초(첫 실행)·0.024초(캐시) | **PASS** |
 
 ---
 
@@ -121,10 +121,10 @@
 | **잘못된 크롭 (KT&G 유안타 p.10)** | 크롭 | 열림 | 같은 캡션에 다른 크롭 박스 |
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
 | **현황서 1절 반려 건수** | 인프라 | 해결 | `update_status.py`가 승인·검수대기·반려를 따로 셈 (전에는 반려가 검수대기에 섞임) |
-| **표 셀 값이 문자열로 저장됨** | 파이프라인 | 해결 | 300개 중 297개 정리(결정 16). 남은 3개(fig-38347d0364c8 SK텔레콤 SK p.1, fig-daada08ef013 코스맥스 메리츠 p.2, fig-ebfa3b5c97da 삼성전자 IBK p.4)는 행 키가 열 이름과 다름(`'차이(%) '` 끝 공백, `'컨센서스_1'` 등 columns에 없는 열)이라 그대로 둠 |
-| **행 키와 열 이름의 공백 차이** | 파이프라인 | 해결(코드) | 0.1.2 `align_row_keys` (결정 17). 기존 표는 `recoerce_tables.py` 재실행으로 반영 |
+| **표 셀 값이 문자열로 저장됨** | 파이프라인 | 해결 | 297개(결정 16) + 0.1.2 후 8개 정리. 남은 2개(fig-38347d0364c8 SK텔레콤 SK p.1 `'컨센서스_1'`·`'차이(%)_1'`, fig-ebfa3b5c97da 삼성전자 IBK p.4 `'이전 추정치_2'`)는 columns에 없는 열에 값이 있어 그대로 둠. 원문 확인 후 재추출 또는 수동 수정 대상 |
+| **행 키와 열 이름의 공백 차이** | 파이프라인 | 해결 | 0.1.2 `align_row_keys` (결정 17), 기존 표 반영 완료 |
 | **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | 정리 후에도 `unit`은 원문 그대로이고 % 행만 `unit_by_row`에 들어감. `unit_for`가 나머지 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산에 영향 있는지 확인 필요 |
-| **`.802`처럼 앞자리 0 없는 소수를 숫자로 못 바꿈** | 파이프라인 | 해결(코드) | 0.1.2 `parse_cell_value` (결정 17). 기존 표는 `recoerce_tables.py` 재실행으로 반영 |
+| **`.802`처럼 앞자리 0 없는 소수를 숫자로 못 바꿈** | 파이프라인 | 해결 | 0.1.2 `parse_cell_value` (결정 17), 기존 표 7개 반영 완료 |
 | **수치표 element_id 연결** | 정답셋(팀원3) | 진행 중 | '수치표_연결' 탭 1/30. 끝나면 팀장이 links.csv로 옮겨 cell_accuracy 측정 (11/27 전) |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (예전부터, Docker 밖 실행 시) |
 
