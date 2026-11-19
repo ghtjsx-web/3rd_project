@@ -6,7 +6,7 @@ PIPELINE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PIPELINE_DIR))
 sys.path.insert(0, str(PIPELINE_DIR.parent))
 
-from table_parse import coerce_table_data, is_empty_table_payload, parse_cell_value  # noqa: E402
+from table_parse import align_row_keys, coerce_table_data, is_empty_table_payload, parse_cell_value  # noqa: E402
 from shared.schemas import ElementType  # noqa: E402
 
 
@@ -79,3 +79,34 @@ def test_reextracted_cosmax_strings_become_numbers():
     assert table.rows[0][label] == "EPS(원)" and table.rows[0]["비고"] == ""
     assert table.unit_for("상승여력 (%)", "계산") == "%"
     assert "숫자로 바꾼 칸 3개" in note
+
+
+def test_leading_dot_decimal_is_number():
+    # 0.1.2: 논문 표의 Fleiss' κ ".802" 같은 표기
+    assert parse_cell_value(".802") == (0.802, False)
+    assert parse_cell_value("-.5") == (-0.5, False)
+    assert parse_cell_value("△.5") == (-0.5, False)
+    assert parse_cell_value(".") == (".", False)
+    assert parse_cell_value("1.") == ("1.", False)
+
+
+def test_space_only_key_difference_is_kept():
+    # 0.1.2: 코스맥스 메리츠 p.2처럼 행 키 끝에 공백이 붙은 경우
+    raw = {"columns": ["구분", "(% diff)"],
+           "rows": [{"구분": "매출액", "(% diff) ": "3.2"}, {"구분": "영업이익", "(% diff)": "1.0", "(% diff) ": "9.9"}]}
+    table, note = coerce_table_data(raw)
+    assert table is not None, note
+    assert [r["(% diff)"] for r in table.rows] == [3.2, 1.0]   # 열에 값이 있으면 열 값을 둔다
+    assert "공백 차이로 옮긴 값 1개" in note
+
+
+def test_suffix_key_is_still_dropped():
+    raw = {"columns": ["구분", "컨센서스"], "rows": [{"구분": "매출액", "컨센서스": "1", "컨센서스_1": "2"}]}
+    table, _ = coerce_table_data(raw)
+    assert table.rows == [{"구분": "매출액", "컨센서스": 1}]
+
+
+def test_ambiguous_space_key_is_not_moved():
+    raw = {"columns": ["구분", "A B", "AB"], "rows": [{"구분": "x", "A  B": "1"}]}
+    aligned, moved = align_row_keys(raw["rows"][0], raw["columns"])
+    assert moved == 0 and aligned == {"구분": "x", "A B": None, "AB": None}
