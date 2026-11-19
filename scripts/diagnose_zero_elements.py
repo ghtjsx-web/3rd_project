@@ -43,7 +43,7 @@ def diagnose(pdf_path: Path, cropper: PDFCropper) -> None:
     total_captions = 0
     for page_number in range(1, doc.page_count + 1):
         page = doc[page_number - 1]
-        text_layer = has_text_layer(page)
+        page_has_text_layer = has_text_layer(page)
         try:
             raw_tables = len(page.find_tables().tables)
         except Exception:
@@ -52,14 +52,14 @@ def diagnose(pdf_path: Path, cropper: PDFCropper) -> None:
         images = len(page.get_images(full=True))
         drawings = len(page.get_drawings())
         captions = []
-        if text_layer:
+        if page_has_text_layer:
             for line in read_text_in_bbox(page, [0.0, 0.0, 1.0, 1.0]).splitlines():
                 if WIDE_CAPTION.match(line):
                     captions.append(line.strip()[:60])
         total_candidates += len(candidates)
         total_captions += len(captions)
         print(
-            f"  P.{page_number:>3} 글자층={'O' if text_layer else 'X'} 표탐지(raw)={raw_tables} "
+            f"  P.{page_number:>3} 글자층={'O' if page_has_text_layer else 'X'} 표탐지(raw)={raw_tables} "
             f"후보={len(candidates)} 이미지={images} 선·도형={drawings} 캡션같은줄={len(captions)}"
         )
         for line in captions:
