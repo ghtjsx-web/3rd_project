@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, model_validator
 # ---------------------------------------------------------------------------
 
 CONFIDENCE_THRESHOLD: float = 0.80   # 이 값 이상이면 APPROVED
-PIPELINE_VERSION: str = "0.1.1"      # 추출 로직(프롬프트·후처리)을 바꾸면 올린다
+PIPELINE_VERSION: str = "0.1.2"      # 추출 로직(프롬프트·후처리)을 바꾸면 올린다
 ENTITY_DICTIONARY_PATH: str = os.getenv("ENTITY_DICTIONARY_PATH", "data/entity_dictionary.csv")
 
 

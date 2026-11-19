@@ -8,9 +8,9 @@
 
 1. **현재 단계**: 11-19 오전. 수치 정답셋 채점 준비 완료, 예전 표 297개 저장 형태 정리(v2 반영). 팀원3이 표 30개의 element_id를 연결하는 중. 다음은 업로드→파이프라인 연결 설계
 2. **방금 한 일과 결과 (2026-11-19)**: 정답셋 작업 시트에 '수치표_연결' 탭 추가(T01 예시 fig-1df2783f1cd8, 15칸 모두 일치). 시트 '수치표' 탭을 `figindex/data/gt/table/cells.csv`(표 30개, 숫자 셀 790개)로, 연결을 `links.csv`로 옮김. `scripts/eval_tables.py`(table_valid_rate·cell_accuracy) 작성. 첫 측정 table_valid_rate 0.998(488/489)이었으나 숫자를 문자열로 저장한 표가 300개(0.0.0·0.1.0)라 `scripts/recoerce_tables.py`로 297개를 정리해 v2 반영(시험 컬렉션 `figindex_test_coerce` 경유, 확신도·검수 상태 변화 0). 위반 표 300 → 3. 역할 문서 3_정답셋 4단계를 연결 방식으로 수정
-3. **다음 할 일 (11-19)**: 새 데이터 zip 만들기(표 정리 반영, 내일 배포), PIPELINE_VERSION 결정(`.802`·키 공백 차이 포함 여부), 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토, 업로드→파이프라인 연결 설계. 팀원2는 11-19 결근
+3. **다음 할 일 (11-19)**: PIPELINE_VERSION 0.1.2 적용 후 `recoerce_tables.py` 다시 실행(`.802`·키 공백 차이 표 정리), 새 데이터 zip 만들기(내일 배포), 팀원1 보완 PR(doc_id를 Qdrant와 맞추기, 미색인 5개 UPLOADED) 검토, 업로드→파이프라인 연결 설계. 팀원2는 11-19 결근
 4. **막힌 것**: 없음
-5. **팀장 결정 대기**: ① PIPELINE_VERSION 0.1.1 → 0.1.2 (표지 메타데이터, #35) ② `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
+5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
 ---
 
@@ -52,11 +52,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-19 10:45** | PIPELINE_VERSION 0.1.2 (#35 표지 메타데이터 + `.802` 소수 + 행 키 공백 차이) | `shared/schemas.py`, `pipeline/table_parse.py`, `pipeline/test_table_parse.py`, `scripts/recoerce_tables.py`, `scripts/test_recoerce_tables.py` | `pytest pipeline/test_table_parse.py scripts/test_recoerce_tables.py scripts/test_eval_tables.py` 등 | 163건 통과 (Docker 밖이라 openai 필요한 표지 테스트 2개 파일은 미실행) | **PASS** |
 | **11-19 10:05** | 예전 표 숫자 문자열 정리 (v2 쓰기, 팀장 승인) | `scripts/recoerce_tables.py`, `scripts/test_recoerce_tables.py`, `scripts/eval_tables.py`, (데이터) v2 297포인트 | `recoerce_tables.py`, `promote_test_to_service.py --test-collection figindex_test_coerce --apply`, `eval_tables.py` | 297개 반영, 칸 15,123개 숫자로, 위반 표 300 → 3, 확신도·검수 상태 변화 0 | **PASS** |
 | **11-19 09:46** | 수치 정답셋 채점 준비 (팀원3 예시·정답셋 CSV·채점 스크립트) | `scripts/eval_tables.py`, `scripts/test_eval_tables.py`, `figindex/data/gt/table/cells.csv`·`links.csv`, `docs/roles/3_정답셋.md` | `pytest scripts/test_eval_tables.py` | 테스트 8건 통과, 정답 셀 790개, T01 15/15 일치 | **PASS** |
 | **11-18 18:12** | `update_status.py`가 Windows에서 한글 커밋 메시지를 못 읽던 문제 (cp949) | `scripts/update_status.py` | `python scripts/update_status.py` | git 호출 3곳 UTF-8로 읽음, 1절 '최신 커밋' 정상 표시 | **PASS** |
 | **11-18 18:06** | 검색 정식 측정 (팀원2 결근 대신 팀장) | 없음 | `python scripts/eval_search.py` | P@5 0.900, 응답 0.314초(첫 실행)·0.024초(캐시) | **PASS** |
-| **11-18 17:46** | 팀원1 진행률·ReviewLog·기존 PDF 등록(#36) 병합, 거래소 종목명(#34) 재정규화 | `backend/app/upload_store.py` 등, (데이터) v2 16포인트 | `python -m app.register_existing_pdfs`, `fix_metadata_from_filename.py` | 기존 PDF 141개 등록, 씨엠티엑스 5·씨에스윈드 5·LIG디펜스앤에어로스페이스 6 | **PASS** |
 
 ---
 
@@ -98,6 +98,7 @@
 14. **현황서 갱신 규칙 (11-18)**: AGENTS.md 8절. ryu 작업은 현황서 전체를 다시 쓰고 `update_status.py` 실행, 팀원 브랜치는 이 파일을 고치지 않음.
 15. **업로드 파일 이름 규칙을 강제하지 않음 (11-18)**: 증권사에서 받은 이름 그대로 올려도 되도록 파이프라인이 표지에서 메타데이터를 찾는다(팀장 처리). 발행일·종목을 못 찾으면 오늘 날짜나 파일명 조각으로 채우지 않고 비워 둔다. 파일명 형식이 맞으면 결정 1대로 파일명이 우선.
 16. **예전 표 297개 저장 형태 정리 (11-19, v2 쓰기)**: pipeline_version 0.0.0·0.1.0 표의 숫자 문자열(`'1,202.2'`, `'6.0%'`) 15,123칸을 숫자로 바꿈. pipeline_version은 그대로 둔다(추출은 예전 버전, 바뀐 것은 저장 형태뿐). 벡터는 캡션·요약·해시태그로 만들어 표 값과 무관하므로 유지. 백업은 `promote_backup_*.json`.
+17. **PIPELINE_VERSION 0.1.1 → 0.1.2 (11-19)**: 세 가지를 한 번에 묶음. ① 표지 기반 메타데이터(#35) ② `parse_cell_value`가 앞자리 0 없는 소수(`.802`)를 숫자로 읽음 ③ `align_row_keys`가 공백만 다른 행 키(`'차이(%) '` ↔ `'차이(%)'`)를 같은 열로 봄. 접미사(`'_1'`)가 붙은 키나 공백을 빼면 같아지는 열이 둘 이상인 경우는 옮기지 않음. 이미 저장된 표는 `recoerce_tables.py`로 정리하고 pipeline_version은 그대로 둔다(결정 16).
 
 ---
 
@@ -121,9 +122,9 @@
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
 | **현황서 1절 반려 건수** | 인프라 | 해결 | `update_status.py`가 승인·검수대기·반려를 따로 셈 (전에는 반려가 검수대기에 섞임) |
 | **표 셀 값이 문자열로 저장됨** | 파이프라인 | 해결 | 300개 중 297개 정리(결정 16). 남은 3개(fig-38347d0364c8 SK텔레콤 SK p.1, fig-daada08ef013 코스맥스 메리츠 p.2, fig-ebfa3b5c97da 삼성전자 IBK p.4)는 행 키가 열 이름과 다름(`'차이(%) '` 끝 공백, `'컨센서스_1'` 등 columns에 없는 열)이라 그대로 둠 |
-| **행 키와 열 이름의 공백 차이** | 파이프라인 | 열림 | `coerce_table_data`가 `'차이(%) '`처럼 공백만 다른 키의 값을 버림. 공백 무시 대조로 살릴 수 있음. 고치면 PIPELINE_VERSION 올림 대상 (`.802`와 함께) |
+| **행 키와 열 이름의 공백 차이** | 파이프라인 | 해결(코드) | 0.1.2 `align_row_keys` (결정 17). 기존 표는 `recoerce_tables.py` 재실행으로 반영 |
 | **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | 정리 후에도 `unit`은 원문 그대로이고 % 행만 `unit_by_row`에 들어감. `unit_for`가 나머지 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산에 영향 있는지 확인 필요 |
-| **`.802`처럼 앞자리 0 없는 소수를 숫자로 못 바꿈** | 파이프라인 | 열림 | `table_parse.parse_cell_value` 정규식이 `\d+` 시작만 허용. 수치 정답셋 T23(Fleiss κ) 4칸이 해당. 고치면 PIPELINE_VERSION 올림 대상 |
+| **`.802`처럼 앞자리 0 없는 소수를 숫자로 못 바꿈** | 파이프라인 | 해결(코드) | 0.1.2 `parse_cell_value` (결정 17). 기존 표는 `recoerce_tables.py` 재실행으로 반영 |
 | **수치표 element_id 연결** | 정답셋(팀원3) | 진행 중 | '수치표_연결' 탭 1/30. 끝나면 팀장이 links.csv로 옮겨 cell_accuracy 측정 (11/27 전) |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (예전부터, Docker 밖 실행 시) |
 

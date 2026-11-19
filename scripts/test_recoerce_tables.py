@@ -53,3 +53,12 @@ def test_lost_unit_by_row_is_skipped():
              "unit_by_row": {"매출액": "억원"}}
     to_write, skipped, _ = plan([point(table)])
     assert to_write == [] and "unit_by_row" in skipped[0][1]
+
+
+def test_space_only_key_is_recovered_and_leading_dot_counted():
+    # 코스맥스 메리츠 p.2처럼 행 키 끝에 공백, 논문 표처럼 '.802'
+    table = {"columns": ["구분", "(% diff)", "κ"],
+             "rows": [{"구분": "매출액", "(% diff) ": "3.2", "κ": ".802"}]}
+    to_write, skipped, cells = plan([point(table)])
+    assert not skipped and len(to_write) == 1
+    assert to_write[0]["payload"]["table_data"]["rows"][0] == {"구분": "매출액", "(% diff)": 3.2, "κ": 0.802}

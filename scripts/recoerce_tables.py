@@ -2,12 +2,13 @@
 """
 scripts/recoerce_tables.py
 
-0.1.1 이전에 색인된 표의 table_data를 지금 규칙(glossary 9절)으로 다시 정리해 시험 컬렉션에 쓴다.
+예전에 색인된 표의 table_data를 지금 규칙(glossary 9절, pipeline/table_parse.py)으로 다시 정리해 시험 컬렉션에 쓴다.
 Gemini·OpenAI를 부르지 않는다. 서비스 컬렉션(v2)은 읽기만 한다.
 
 배경 (11-19 eval_tables.py 측정)
 - 표 489개 중 300개가 숫자를 '1,202.2', '6.0%' 같은 문자열로 저장 (pipeline_version 0.0.0·0.1.0)
-- 0.1.1의 pipeline/table_parse.py coerce_table_data를 거친 표는 0개
+- 0.1.1의 pipeline/table_parse.py coerce_table_data를 거친 표는 0개 → 297개 정리 (결정 16)
+- 0.1.2: '.802' 같은 소수, 공백만 다른 행 키도 정리 대상
 
 하는 일
 1. v2에서 TABLE 요소 중 숫자 문자열 칸이 있는 것을 고른다 (반려 제외).
@@ -16,7 +17,7 @@ Gemini·OpenAI를 부르지 않는다. 서비스 컬렉션(v2)은 읽기만 한�
    (벡터는 캡션·요약·해시태그로 만들어서 표 값과 무관하다)
    - 행 수, 열 이름, 행 라벨이 그대로인지
    - 모든 칸의 숫자 값이 정리 전과 같은지
-   - columns에 없는 키에 값이 있거나, 기존 unit_by_row·unit_by_column 항목이 사라지지 않는지
+   - 공백을 빼도 columns에 없는 키에 값이 있지 않은지, 기존 unit_by_row·unit_by_column 항목이 사라지지 않는지
 4. v2 반영은 promote_test_to_service.py로 따로 한다 (결정 8: v2 쓰기는 시험 컬렉션을 거친다).
 
 pipeline_version은 바꾸지 않는다 (추출은 예전 버전이 했고, 바뀐 것은 저장 형태뿐).
@@ -44,7 +45,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 try:
     from shared.schemas import ElementType, ReviewStatus
-    from pipeline.table_parse import coerce_table_data, parse_cell_value
+    from pipeline.table_parse import align_row_keys, coerce_table_data, normalize_key, parse_cell_value
 except ImportError as e:
     sys.exit(f"figindex 모듈을 불러오지 못했습니다: {e}\n'pip install pydantic' 후 다시 실행해 주세요.")
 
@@ -69,10 +70,14 @@ def check_same_content(before: Dict[str, Any], after: Dict[str, Any]) -> Optiona
     old_rows = [r for r in before.get("rows") or [] if isinstance(r, dict)]
     if len(old_rows) != len(after["rows"]):
         return f"행 수가 바뀜 {len(old_rows)} → {len(after['rows'])}"
+    column_norms = {normalize_key(c) for c in columns}
     for old in old_rows:
-        extra = [k for k, v in old.items() if str(k) not in columns and v not in (None, "")]
+        extra = [k for k, v in old.items()
+                 if str(k) not in columns and normalize_key(k) not in column_norms and v not in (None, "")]
         if extra:
             return f"columns에 없는 키에 값이 있음 {extra[:3]}"
+    # 공백만 다른 키는 coerce가 열로 옮기므로, 비교할 때도 같은 방식으로 맞춘 행을 쓴다
+    old_rows = [align_row_keys(r, columns)[0] for r in old_rows]
     for key in ("unit_by_row", "unit_by_column"):
         lost = set(before.get(key) or {}) - set(after.get(key) or {})
         if lost:
