@@ -1,6 +1,7 @@
 """Isolated tests for upload metadata persistence and existing PDF registration."""
 
 import hashlib
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -271,6 +272,38 @@ class UploadStoreTests(unittest.TestCase):
             documents["not-indexed.pdf"],
             (original_ids["old-not-indexed.pdf"], DocStatus.UPLOADED.value),
         )
+
+
+    def test_existing_registration_keeps_worker_results_and_processing(self) -> None:
+        # 설계서: 작업자가 처리한 문서(도표 0개 포함)는 Qdrant에 없어도 COMPLETED 유지, PROCESSING은 건드리지 않음
+        self.pdfs_dir.mkdir()
+        (self.pdfs_dir / "text-only.pdf").write_bytes(b"text only report")
+        (self.pdfs_dir / "running.pdf").write_bytes(b"being processed")
+        register_existing_pdfs(str(self.db_path), str(self.pdfs_dir), {})
+
+        connection = sqlite3.connect(str(self.db_path))
+        try:
+            connection.execute(
+                "UPDATE documents SET doc_status = ?, extra_metadata = ? WHERE doc_name = 'text-only.pdf'",
+                (DocStatus.COMPLETED.value, json.dumps({"element_count": 0})),
+            )
+            connection.execute(
+                "UPDATE documents SET doc_status = ? WHERE doc_name = 'running.pdf'",
+                (DocStatus.PROCESSING.value,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        register_existing_pdfs(str(self.db_path), str(self.pdfs_dir), {})
+
+        connection = sqlite3.connect(str(self.db_path))
+        try:
+            statuses = dict(connection.execute("SELECT doc_name, doc_status FROM documents"))
+        finally:
+            connection.close()
+        self.assertEqual(statuses["text-only.pdf"], DocStatus.COMPLETED.value)
+        self.assertEqual(statuses["running.pdf"], DocStatus.PROCESSING.value)
 
 
 if __name__ == "__main__":

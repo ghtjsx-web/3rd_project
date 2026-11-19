@@ -44,6 +44,7 @@ from shared.schemas import (
 from shared.compare import available_metrics, build_comparison
 from shared.normalize import METRIC_ALIASES
 from app.upload_store import append_review_log, get_batch_documents, persist_batch
+from shared.upload_db import RetryNotAllowed, retry_document
 from app.review_compare import caption_changed, table_data_changed
 
 
@@ -191,6 +192,23 @@ def get_batch_status(batch_id: str):
     if documents is None:
         raise HTTPException(status_code=404, detail=f"등록 묶음 '{batch_id}'를 찾을 수 없습니다.")
     return documents
+
+
+@app.post(
+    "/api/documents/{doc_id}/retry",
+    response_model=Document,
+    summary="실패한 문서 다시 처리",
+    description="FAILED인 문서를 UPLOADED로 되돌려 작업자가 다시 처리하게 합니다. "
+                "FAILED가 아니거나 같은 내용의 문서가 이미 처리 중·완료면 409를 반환합니다.",
+)
+def retry_failed_document(doc_id: str):
+    try:
+        document = retry_document(UPLOAD_DB_PATH, doc_id)
+    except RetryNotAllowed as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"문서 '{doc_id}'를 찾을 수 없습니다.")
+    return document
 
 
 # CORS Domains

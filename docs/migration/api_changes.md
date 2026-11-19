@@ -67,3 +67,9 @@
 ## 7. PDF 묶음 처리 상태 조회
 - GET /api/batches/{batch_id}: 해당 묶음의 Document 목록(List[Document])을 반환합니다. 존재하지 않는 batch_id는 404를 반환합니다.
 - 화면은 응답의 doc_status를 세어 진행률을 표시하며, COMPLETED·FAILED·DUPLICATE를 처리 완료 건수에 포함합니다.
+
+## 8. 실패한 문서 다시 처리 (11-19, 업로드→파이프라인 연결)
+- POST /api/documents/{doc_id}/retry: doc_status가 FAILED인 문서를 UPLOADED로 되돌리고 doc_error를 비웁니다. 응답은 바뀐 Document입니다.
+- 문서가 없으면 404, FAILED가 아니거나 같은 doc_hash의 문서가 이미 UPLOADED·PROCESSING·COMPLETED이면 409를 반환합니다.
+- 처리는 작업자(pipeline/worker.py)가 합니다. 작업자는 UPLOADED를 오래된 순서로 한 건씩 PROCESSING → COMPLETED/FAILED로 바꿉니다.
+- COMPLETED 문서의 extra_metadata에 element_count(도표 수, 0일 수 있음), toc_pages_skipped, pipeline_version이 들어갑니다.

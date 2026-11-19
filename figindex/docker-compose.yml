@@ -69,6 +69,37 @@ services:
       qdrant:
         condition: service_healthy
 
+  # 업로드 작업자 (설계서 '업로드→파이프라인 연결 설계'). 필요할 때만 켠다:
+  #   docker compose --profile worker up -d worker
+  # 개발 중에는 시험 컬렉션에만 쓴다. 서비스 전환 때 WORKER_COLLECTION=figindex_elements_v2 (팀장 결정)
+  worker:
+    build:
+      context: .
+      dockerfile: pipeline/Dockerfile
+    container_name: figindex-worker
+    profiles:
+      - worker
+    restart: unless-stopped
+    command: python worker.py
+    env_file:
+      - .env
+    environment:
+      - QDRANT_MODE=server
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=${WORKER_COLLECTION:-figindex_test_upload}
+      - CROPS_DIR=/data/crops
+      - PDFS_DIR=/data/pdfs
+      - UPLOAD_DB_PATH=/data/metadata.sqlite3
+      - ENTITY_DICTIONARY_PATH=/data/entity_dictionary.csv
+    volumes:
+      - ./pipeline:/app
+      - ./data:/data
+      - ./shared:/app/shared
+      - ./data/model_cache:/root/.cache
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend
