@@ -170,6 +170,9 @@ TOC_HEADINGS = ("목차", "차례", "표목차", "그림목차", "contents", "ta
 _TOC_LEADER_LINE = re.compile(r"(\.{3,}|·{3,}|…+|‥+|ㆍ{3,}|∙{3,}|•{3,}|-{4,}|_{4,})\s*\d{1,4}\s*$")
 # 쪽번호로 끝나는 줄 (점선 없이 띄어쓰기만 있는 목차용)
 _ENDS_WITH_PAGE_NO = re.compile(r"\D\s+\d{1,4}\s*$")
+# 목차 항목처럼 시작하는 줄: '2.3. 제약식', '제5장 결론', '<표 3-17>', '[그림 2]', '부록', '참고문헌'
+# (연도로 시작하는 표 행 '2024 8998 …'은 장·절 번호 뒤 점이 없어 걸리지 않음)
+_TOC_ENTRY_START = re.compile(r"^(\d{1,2}(\.\d{1,2})*\.\s|제\s*\d+\s*장|[<\[〈]\s*(표|그림)|부록|참고문헌)")
 
 
 def is_toc_text(text: str) -> bool:
@@ -177,7 +180,9 @@ def is_toc_text(text: str) -> bool:
 
     - 점선 + 쪽번호로 끝나는 줄이 5줄 이상이고 전체 줄의 40% 이상이면 목차
     - 위쪽 5줄 안에 목차 제목이 있고, 쪽번호로 끝나는 줄이 5줄 이상·전체의 50% 이상이면 목차
-    표의 숫자 행은 점선이 없고 제목도 없으므로 걸리지 않게 했습니다.
+    - 제목·점선이 없어도(이어지는 목차 페이지, 점선을 선으로 그린 목차) 쪽번호로 끝나는 줄이 8줄 이상·전체의 80% 이상이고
+      장·절 번호나 '<표 …>'로 시작하는 줄이 전체의 50% 이상이면 목차
+    표의 숫자 행은 점선·제목이 없고, 소수·쉼표 숫자로 끝나거나 장·절 번호로 시작하지 않으므로 걸리지 않게 했습니다.
     """
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     if len(lines) < 5:
@@ -185,11 +190,12 @@ def is_toc_text(text: str) -> bool:
     leader = sum(1 for ln in lines if _TOC_LEADER_LINE.search(ln))
     if leader >= 5 and leader / len(lines) >= 0.4:
         return True
+    numbered = sum(1 for ln in lines if _ENDS_WITH_PAGE_NO.search(ln))
     head = "".join("".join(ln.split()).lower() for ln in lines[:5])
     if any(h in head for h in TOC_HEADINGS):
-        numbered = sum(1 for ln in lines if _ENDS_WITH_PAGE_NO.search(ln))
         return numbered >= 5 and numbered / len(lines) >= 0.5
-    return False
+    entries = sum(1 for ln in lines if _TOC_ENTRY_START.search(ln))
+    return numbered >= 8 and numbered / len(lines) >= 0.8 and entries / len(lines) >= 0.5
 
 
 def is_toc_page(page) -> bool:
