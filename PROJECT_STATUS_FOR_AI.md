@@ -6,9 +6,9 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-19 저녁. 업로드→파이프라인 연결의 서버 쪽 구현 완료(`feat/upload-pipeline`, PIPELINE_VERSION 0.1.3), 검수 단축키 병합(PR #38), 검수 EDIT 오기록 버그 수정, 시험 컬렉션 스크립트 병합(PR #39). 내일(11/20) 배포
-2. **방금 한 일과 결과 (2026-11-19 오후)**: 작업자로 미색인 5건 처리 성공(휴머노이드 27쪽 도표 10개 313.7초, KB금융·우리금융지주·OECD 보도자료 0개는 원래 도표 없음). 드론 논문 0개는 `Fig. N.` 캡션을 규칙이 못 읽어서였고, 캡션 위 이미지를 묶는 규칙을 넣어 후보 0 → 4(3·4·6·7쪽). pipeline 테스트 226건 통과. 목차 거르기 반려 17건 중 16건 건너뜀, 카드 있는 정답 표 14개 중 0개 건너뜀
-3. **다음 할 일 (11/20)**: 배포 순서 `ryu` → main → `feat/upload-pipeline` → main(충돌 미리 해결함). 팀장 PC에서 `register_existing_pdfs`, 검수 탭 A키 승인이 ReviewLog에 APPROVE로 남는지 확인, 팀원에게 `figindex_data_20261119.zip` 안내
+1. **현재 단계**: 검색 색인 텍스트 고도화(표 열·행 이름 반영) 구현 완료 단계
+2. **방금 한 일과 결과 (2026-11-20)**: `figindex/shared/index_text.py` 구현 및 `orchestrator.py`, `rebuild_sparse_vectors.py` 연동. 표 열·행 이름(최대 40개, 숫자 행 라벨 제외, 중복 제거) 색인 텍스트 추가 함수 `build_index_text` 작성, `figindex/pipeline/test_index_text.py` 단위 테스트 5종 추가, docker pipeline pytest 231건 전량 통과, 샘플 표(`fig-46d2e5efc031`) 검증 완료
+3. **다음 할 일**: 기존 618건 v2 컬렉션 벡터 재계산 계획 수립
 4. **막힌 것**: 없음
 5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
@@ -21,20 +21,20 @@
 <!-- AUTO:START -->
 | 항목 | 측정값 | 측정 시각 |
 | :--- | :--- | :--- |
-| **Git 브랜치** | `ryu` | 2026-11-19 18:02:06 KST |
-| **Git 최신 커밋** | `47ed7c2 - Merge pull request #41 from ghtjsx-web/feat/upload-pipeline` | 2026-11-19 18:02:06 KST |
-| **Git 미커밋 변경 파일** | `1개 파일` | 2026-11-19 18:02:06 KST |
-| **Qdrant 컬렉션 (`v2`) 포인트** | `618` (승인: `593`, 검수대기: `8`, 반려: `17`) | 2026-11-19 18:02:06 KST |
-| **Qdrant 색인 고유 문서** | `136개 문서` | 2026-11-19 18:02:06 KST |
-| **원문 PDF 총계** | `141개 PDF` | 2026-11-19 18:02:06 KST |
-| **미색인 원문 PDF 목록** | 5건: RPT_20261105_KB금융_미확인.pdf, RPT_20261105_우리금융지주_미확인.pdf, 논문_20260825_드론자력탐사오차보정_Geophysics.pdf, 보고서20261111휴머노이드로봇RD투자전략개방형_한국과학기술기획평가원.pdf, 보도자료_20260702_OECD한국경제보고서_재정경제부.pdf | 2026-11-19 18:02:06 KST |
-| **동일 종목 비교 그룹** | `10개 그룹` (`compare_pairs.json`) | 2026-11-19 18:02:06 KST |
-| **도표 비교 매칭 성공** | 총 69건 (TARGET_PRICE: 15건, ANNUAL_ESTIMATE: 28건, QUARTERLY_RESULT: 26건) | 2026-11-19 18:02:06 KST |
-| **도표 비교 미매칭 원인** | 총 21건 (ABSENT: 8건, KEYWORD_MISS: 13건) | 2026-11-19 18:02:06 KST |
-| **상태 검사기 (`check_state`)** | `PASS=7  WARN=1  CHANGED=0  FAIL=0  SKIP=0` | 2026-11-19 18:02:06 KST |
-| └ **검사 경고(WARN) 항목** | A6. 모델 중복 정의 | 2026-11-19 18:02:06 KST |
-| └ **검사 생략(SKIP) 항목** | 없음 | 2026-11-19 18:02:06 KST |
-| └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-19 18:02:06 KST |
+| **Git 브랜치** | `ryu` | 2026-11-20 16:04:45 KST |
+| **Git 최신 커밋** | `00ea8e4 - docs: 현황서 1절 숫자 갱신 (11-19 저녁)` | 2026-11-20 16:04:45 KST |
+| **Git 미커밋 변경 파일** | `6개 파일` | 2026-11-20 16:04:45 KST |
+| **Qdrant 컬렉션 (`v2`) 포인트** | `618` (승인: `593`, 검수대기: `8`, 반려: `17`) | 2026-11-20 16:04:45 KST |
+| **Qdrant 색인 고유 문서** | `136개 문서` | 2026-11-20 16:04:45 KST |
+| **원문 PDF 총계** | `141개 PDF` | 2026-11-20 16:04:45 KST |
+| **미색인 원문 PDF 목록** | 5건: RPT_20261105_KB금융_미확인.pdf, RPT_20261105_우리금융지주_미확인.pdf, 논문_20260825_드론자력탐사오차보정_Geophysics.pdf, 보고서20261111휴머노이드로봇RD투자전략개방형_한국과학기술기획평가원.pdf, 보도자료_20260702_OECD한국경제보고서_재정경제부.pdf | 2026-11-20 16:04:45 KST |
+| **동일 종목 비교 그룹** | `10개 그룹` (`compare_pairs.json`) | 2026-11-20 16:04:45 KST |
+| **도표 비교 매칭 성공** | 총 69건 (TARGET_PRICE: 15건, ANNUAL_ESTIMATE: 28건, QUARTERLY_RESULT: 26건) | 2026-11-20 16:04:45 KST |
+| **도표 비교 미매칭 원인** | 총 21건 (ABSENT: 8건, KEYWORD_MISS: 13건) | 2026-11-20 16:04:45 KST |
+| **상태 검사기 (`check_state`)** | `PASS=7  WARN=1  CHANGED=0  FAIL=0  SKIP=0` | 2026-11-20 16:04:45 KST |
+| └ **검사 경고(WARN) 항목** | A6. 모델 중복 정의 | 2026-11-20 16:04:45 KST |
+| └ **검사 생략(SKIP) 항목** | 없음 | 2026-11-20 16:04:45 KST |
+| └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-20 16:04:45 KST |
 <!-- AUTO:END -->
 
 수동 기록 (2026-11-19 17:10)
@@ -53,11 +53,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-20 16:00** | 검색 색인 텍스트에 표 열·행 이름 반영 (`build_index_text`) | `shared/index_text.py`, `pipeline/orchestrator.py`, `scripts/rebuild_sparse_vectors.py`, `pipeline/test_index_text.py` | `docker compose -f figindex/docker-compose.yml run --rm pipeline pytest -q` | pipeline 테스트 231건 전량 통과(신규 5건 포함), fig-46d2e5efc031 색인 텍스트 검증 | **PASS** |
 | **11-19 17:00** | 도표 0개 문서 원인 확인, 논문식 `Fig. N.` 캡션 그림 찾기 (`feat/upload-pipeline`, 0.1.3에 포함) | `scripts/diagnose_zero_elements.py`, `pipeline/cropper.py`, `pipeline/test_fig_caption.py`, `pipeline/pdf_text.py`(0.8 리터럴을 정수 비교로) | `diagnose_zero_elements.py 드론자력탐사 OECD한국경제보고서`, `pytest -q` | 드론 논문 후보 0 → 4, OECD는 원문에 표·그래프 없음(정상), 226건 통과 | **PASS** |
 | **11-19 17:02** | PR #39 병합 (팀원3 시험 컬렉션 생성 스크립트) | `scripts/create_test_review_collection.py` | — | 대상 이름 검사: v1·v2·`figindex_test_upload`·원본과 같은 이름이면 중단(팀장 검토 때 `figindex_test_upload` 추가), 병합 `00ef508` | **PASS** |
 | **11-19 15:24** | 검수 승인이 EDIT로 기록되던 버그 수정 (팀원1 단축키 시험에서 발견) | `backend/app/main.py`, `backend/app/review_compare.py`, `backend/app/test_review_compare.py` | `python -m unittest backend/app/test_review_compare.py` | 7건 통과. 고치지 않은 표·빈 캡션이 형식 차이로 '바뀜'으로 잡히던 것 | **PASS** |
 | **11-19 15:14** | PR #38 병합 (팀원1 검수 탭 A/R 단축키) | `frontend/app/components/ReviewTab.tsx` | — | 34줄, 팀원1이 시험 컬렉션에서 3건 확인, 병합 `be645c2`. 같은 기능의 팀원3 `sun` 브랜치는 v2 검수를 막는 코드가 있어 병합하지 않음 | **PASS** |
-| **11-19 14:23** | 업로드→파이프라인 연결 서버 쪽 구현 (`feat/upload-pipeline`) | `shared/upload_db.py`, `pipeline/worker.py`, `pipeline/orchestrator.py`(`index_document`), `pipeline/pdf_text.py`(목차 판단), `shared/schemas.py`(0.1.3), `backend/app/main.py`(retry API), `backend/app/upload_store.py`, `docker-compose.yml`(worker), 테스트 | `pytest`, `check_toc_filter.py`, 작업자 실제 처리 | 목차 거르기 16/17·정답 표 0/14, 미색인 5건 처리, 테스트 통과 | **PASS** |
 
 ---
 

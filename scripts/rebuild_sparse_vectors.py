@@ -28,6 +28,7 @@ if str(FIGINDEX_DIR) not in sys.path:
     sys.path.insert(0, str(FIGINDEX_DIR))
 
 from shared.sparse import build_sparse_vector
+from shared.index_text import build_index_text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,20 +97,9 @@ def update_sparse_vectors_batch(
 
 def build_text_from_payload(payload: Dict[str, Any]) -> str:
     """
-    색인 시점(orchestrator.py:629)과 동일한 필드로 텍스트를 구성합니다.
-    text_to_embed = f"{element.caption} {element.summary} {' '.join(element.hashtags)} {element.doc_title or ''} {element.source_org or ''} {' '.join(element.entities)}"
+    색인 시점(orchestrator.py)과 동일하게 shared.index_text.build_index_text를 사용합니다.
     """
-    caption = payload.get("caption") or ""
-    summary = payload.get("summary") or ""
-    hashtags = payload.get("hashtags") or []
-    doc_title = payload.get("doc_title") or ""
-    source_org = payload.get("source_org") or ""
-    entities = payload.get("entities") or []
-
-    hashtags_str = " ".join(hashtags) if isinstance(hashtags, list) else str(hashtags)
-    entities_str = " ".join(entities) if isinstance(entities, list) else str(entities)
-
-    return f"{caption} {summary} {hashtags_str} {doc_title} {source_org} {entities_str}"
+    return build_index_text(payload)
 
 
 def run_rebuild_sparse(
