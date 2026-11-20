@@ -31,6 +31,7 @@ from shared.schemas import (
     ENTITY_DICTIONARY_PATH,
 )
 from shared.sparse import build_sparse_vector, generate_point_id
+from shared.index_text import build_index_text
 
 try:
     from cropper import PDFCropper
@@ -721,7 +722,7 @@ class ExtractionPipelineOrchestrator:
 
     def index_element_to_qdrant(self, element: ElementSearchPayload):
         """Upsert a single ElementSearchPayload into Qdrant collection."""
-        text_to_embed = f"{element.caption} {element.summary} {' '.join(element.hashtags)} {element.doc_title or ''} {element.source_org or ''} {' '.join(element.entities)}"
+        text_to_embed = build_index_text(element.model_dump(mode="json"))
         dense_vec = self.get_dense_embedding(text_to_embed)
         sparse_tokens = build_sparse_vector(text_to_embed)
         sparse_indices = list(sparse_tokens.keys())
