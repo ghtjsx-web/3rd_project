@@ -46,6 +46,7 @@ from shared.normalize import METRIC_ALIASES
 from app.upload_store import append_review_log, get_batch_documents, persist_batch
 from shared.upload_db import RetryNotAllowed, retry_document
 from app.review_compare import caption_changed, table_data_changed
+from app.search_rerank import rerank_points
 
 
 @asynccontextmanager
@@ -689,17 +690,23 @@ def get_elements(
         entity_filter = build_entity_filter(
             [e for e in match_entities(query.strip()) if e.entity_type == EntityType.COMPANY]
         )
+        # 기업이 잡힌 검색어만 후보를 넓게 뽑아 표 행·열 이름으로 다시 정렬한다 (search_rerank.py).
+        # 기업 없는 검색어("PBR 밴드" 등)는 정답이 차트인 경우가 많아 순서를 그대로 둔다.
+        candidate_limit = max(limit, HYBRID_PREFETCH_LIMIT) if entity_filter else limit
         with qdrant_call_guard():
             ensure_payload_indexes(client)
             search_response = hybrid_query(
                 client, query_vector, sparse_vector,
                 qmodels.Filter(must=[*must_filters, entity_filter]) if entity_filter else query_filter,
-                limit,
+                candidate_limit,
             )
             # 엔티티 조건으로 하나도 안 나오면(저장 쪽 entities 누락 등) 엔티티 조건 없이 다시 찾는다
             if entity_filter and not search_response.points:
                 search_response = hybrid_query(client, query_vector, sparse_vector, query_filter, limit)
-        for hit in search_response.points:
+        hits = search_response.points
+        if entity_filter:
+            hits = rerank_points(query.strip(), hits)[:limit]
+        for hit in hits:
             if hit.payload:
                 try:
                     elements.append(ElementSearchPayload(**hit.payload))

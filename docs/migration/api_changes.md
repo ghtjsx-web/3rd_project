@@ -73,3 +73,6 @@
 - 문서가 없으면 404, FAILED가 아니거나 같은 doc_hash의 문서가 이미 UPLOADED·PROCESSING·COMPLETED이면 409를 반환합니다.
 - 처리는 작업자(pipeline/worker.py)가 합니다. 작업자는 UPLOADED를 오래된 순서로 한 건씩 PROCESSING → COMPLETED/FAILED로 바꿉니다.
 - COMPLETED 문서의 extra_metadata에 element_count(도표 수, 0일 수 있음), toc_pages_skipped, pipeline_version이 들어갑니다.
+
+## 9. 검색 결과 순서 (11-20, 기업명+지표 검색 재정렬)
+- GET /api/search, GET /api/elements: 응답 키는 그대로이고 순서만 바뀝니다. 검색어에 기업(엔티티 사전 COMPANY)이 잡히면 후보 50개 안에서 표의 행·열 이름에 검색어의 지표·연도가 있는 표를 앞으로 올립니다 (figindex/backend/app/search_rerank.py).
