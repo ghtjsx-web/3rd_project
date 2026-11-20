@@ -31,10 +31,37 @@ function isBatchDocumentSettled(document: Document): boolean {
   );
 }
 
+function completedElementCount(document: Document): number | null {
+  if (document.doc_status !== DOC_STATUS.COMPLETED) return null;
+
+  const element_count = document.extra_metadata?.element_count;
+  return (
+    typeof element_count === "number" &&
+    Number.isInteger(element_count) &&
+    element_count >= 0
+      ? element_count
+      : null
+  );
+}
+
+function responseDetail(responseBody: unknown): string | null {
+  if (typeof responseBody !== "object" || responseBody === null || !("detail" in responseBody)) {
+    return null;
+  }
+
+  const detail = responseBody.detail;
+  if (typeof detail === "string") return detail;
+  if (detail === null || typeof detail === "number" || typeof detail === "boolean") {
+    return String(detail);
+  }
+  return typeof detail === "object" ? JSON.stringify(detail) ?? null : null;
+}
+
 export default function UploadPanel({ backendUrl }: UploadPanelProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadedDocuments, setUploadedDocuments] = useState<Document[]>([]);
   const [batchIds, setBatchIds] = useState<string[]>([]);
+  const [retryingDocIds, setRetryingDocIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -173,6 +200,76 @@ export default function UploadPanel({ backendUrl }: UploadPanelProps) {
     }
   }
 
+  async function handleRetry(document: Document) {
+    const apiBaseUrl = backendUrl.trim().replace(/\/+$/, "");
+    if (!apiBaseUrl || retryingDocIds.includes(document.doc_id)) return;
+
+    setRetryingDocIds((currentDocIds) => {
+      if (currentDocIds.includes(document.doc_id)) return currentDocIds;
+      return [...currentDocIds, document.doc_id];
+    });
+
+    try {
+      const response = await fetch(
+        apiBaseUrl + "/api/documents/" + encodeURIComponent(document.doc_id) + "/retry",
+        { method: "POST" }
+      );
+      const responseBody = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const detail = responseDetail(responseBody) ?? "문서를 다시 처리할 수 없습니다.";
+        setUploadedDocuments((currentDocuments) =>
+          currentDocuments.map((currentDocument) =>
+            currentDocument.doc_id === document.doc_id
+              ? { ...currentDocument, doc_error: detail }
+              : currentDocument
+          )
+        );
+        return;
+      }
+
+      if (
+        typeof responseBody !== "object" ||
+        responseBody === null ||
+        !("doc_id" in responseBody) ||
+        typeof responseBody.doc_id !== "string" ||
+        responseBody.doc_id !== document.doc_id
+      ) {
+        throw new Error("서버 응답을 확인할 수 없습니다.");
+      }
+
+      const retriedDocument = responseBody as Document;
+      setUploadedDocuments((currentDocuments) =>
+        currentDocuments.map((currentDocument) =>
+          currentDocument.doc_id === document.doc_id ? retriedDocument : currentDocument
+        )
+      );
+
+      const retryBatchId = retriedDocument.batch_id ?? document.batch_id;
+      if (retryBatchId) {
+        setBatchIds((currentBatchIds) =>
+          currentBatchIds.includes(retryBatchId)
+            ? currentBatchIds
+            : [...currentBatchIds, retryBatchId]
+        );
+      }
+    } catch (error: unknown) {
+      const detail =
+        error instanceof Error ? error.message : "문서를 다시 처리할 수 없습니다.";
+      setUploadedDocuments((currentDocuments) =>
+        currentDocuments.map((currentDocument) =>
+          currentDocument.doc_id === document.doc_id
+            ? { ...currentDocument, doc_error: detail }
+            : currentDocument
+        )
+      );
+    } finally {
+      setRetryingDocIds((currentDocIds) =>
+        currentDocIds.filter((currentDocId) => currentDocId !== document.doc_id)
+      );
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -297,40 +394,62 @@ export default function UploadPanel({ backendUrl }: UploadPanelProps) {
                     aria-label="문서 처리 진행률"
                   />
                   <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                    {batchDocuments.map((document) => (
-                      <li
-                        key={document.doc_id}
-                        className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-800">
-                            {document.doc_name}
-                          </p>
-                          {document.doc_error && (
-                            <p className="mt-1 break-all text-xs text-slate-500">
-                              {document.doc_status === DOC_STATUS.DUPLICATE
-                                ? "기존 문서 ID: " + document.doc_error
-                                : document.doc_error}
-                            </p>
-                          )}
-                        </div>
-                        <span
-                          className={
-                            "shrink-0 self-start rounded-full px-3 py-1 text-xs font-bold sm:self-auto " +
-                            (document.doc_status === DOC_STATUS.COMPLETED
-                              ? "bg-emerald-100 text-emerald-800"
-                              : document.doc_status === DOC_STATUS.UPLOADED ||
-                                document.doc_status === DOC_STATUS.PROCESSING
-                              ? "bg-indigo-100 text-indigo-800"
-                              : document.doc_status === DOC_STATUS.DUPLICATE
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-rose-100 text-rose-800")
-                          }
+                    {batchDocuments.map((document) => {
+                      const element_count = completedElementCount(document);
+                      const isRetrying = retryingDocIds.includes(document.doc_id);
+
+                      return (
+                        <li
+                          key={document.doc_id}
+                          className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                         >
-                          {DOC_STATUS_LABELS[document.doc_status]}
-                        </span>
-                      </li>
-                    ))}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-800">
+                              {document.doc_name}
+                            </p>
+                            {element_count !== null && (
+                              <p className="mt-1 text-xs text-slate-600">
+                                {element_count === 0 ? "도표 없음" : "도표 " + element_count + "개"}
+                              </p>
+                            )}
+                            {document.doc_error && (
+                              <p className="mt-1 break-all text-xs text-slate-500">
+                                {document.doc_status === DOC_STATUS.DUPLICATE
+                                  ? "기존 문서 ID: " + document.doc_error
+                                  : document.doc_error}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
+                            <span
+                              className={
+                                "rounded-full px-3 py-1 text-xs font-bold " +
+                                (document.doc_status === DOC_STATUS.COMPLETED
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : document.doc_status === DOC_STATUS.UPLOADED ||
+                                    document.doc_status === DOC_STATUS.PROCESSING
+                                  ? "bg-indigo-100 text-indigo-800"
+                                  : document.doc_status === DOC_STATUS.DUPLICATE
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-rose-100 text-rose-800")
+                              }
+                            >
+                              {DOC_STATUS_LABELS[document.doc_status]}
+                            </span>
+                            {document.doc_status === DOC_STATUS.FAILED && (
+                              <button
+                                type="button"
+                                onClick={() => void handleRetry(document)}
+                                disabled={isRetrying || !backendUrl.trim()}
+                                className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isRetrying ? "요청 중..." : "다시 시도"}
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               );
