@@ -32,15 +32,18 @@ from shared.schemas import (
 )
 from shared.sparse import build_sparse_vector, generate_point_id
 from shared.index_text import build_index_text
+from shared.coords import from_legacy_yxyx
 
 try:
     from cropper import PDFCropper
     from extractor import MultimodalExtractor
     from pdf_text import is_toc_page
+    from element_match import matches_existing
 except ImportError:
     from pipeline.cropper import PDFCropper
     from pipeline.extractor import MultimodalExtractor
     from pipeline.pdf_text import is_toc_page
+    from pipeline.element_match import matches_existing
 
 
 DOC_TYPE_CODE_MAP: Dict[str, str] = {
@@ -755,6 +758,8 @@ class ExtractionPipelineOrchestrator:
         max_elements_per_pdf: int = 4,
         doc_id: Optional[str] = None,
         skip_toc: bool = True,
+        existing_bboxes: Optional[Dict[int, List[List[float]]]] = None,
+        doc_overrides: Optional[Dict[str, Any]] = None,
     ) -> List[ElementSearchPayload]:
         """
         Process a single PDF document:
@@ -766,6 +771,9 @@ class ExtractionPipelineOrchestrator:
         - max_pages=None이면 전체 페이지를 본다.
         - doc_id를 주면 그 값을 요소의 doc_id로 쓴다 (업로드 DB의 doc_id와 맞추기, 0.1.3).
         - skip_toc=True이면 목차·표 목차 페이지는 도표를 찾지 않고 건너뛴다 (0.1.3).
+        - existing_bboxes({page_number: [bbox, ...]})를 주면 기존 요소와 같은 후보는 크롭·Gemini 분석 없이
+          건너뛴다. 빠진 요소만 추가하는 재색인용(결정 22). max_elements_per_pdf는 새 요소만 센다.
+        - doc_overrides를 주면 추출한 문서 메타데이터를 그 값으로 덮어쓴다 (기존 요소와 같은 값을 물려받기).
         처리한 문서의 Document는 self.last_document에 남는다 (index_document가 사용).
         """
         doc = fitz.open(str(pdf_path))
@@ -773,6 +781,8 @@ class ExtractionPipelineOrchestrator:
         total_pages = len(doc) if max_pages is None else min(len(doc), max_pages)
 
         doc_metadata = self.extract_document_metadata(doc, doc_name)
+        if doc_overrides:
+            doc_metadata.update(doc_overrides)
         print(f"  -> Extracted Metadata: 유형={doc_metadata['doc_type']}, 대상={doc_metadata.get('target')}, 출처={doc_metadata.get('source_org')}, 발행일={doc_metadata['publish_date']}, 종목={doc_metadata.get('ticker')}")
 
         # 1회 문서 객체(Document) 생성 (메모리에서만 유지)
@@ -826,6 +836,7 @@ class ExtractionPipelineOrchestrator:
         pending_payloads: List[ElementSearchPayload] = []
         extracted_count = 0
         toc_pages_skipped: List[int] = []
+        skipped_existing = 0
         self.last_document = document
 
         try:
@@ -839,6 +850,14 @@ class ExtractionPipelineOrchestrator:
                     print(f"    [P.{p_idx}] 목차 페이지라 건너뜀")
                     continue
                 candidates = self.cropper.detect_candidate_boxes(page)
+                if existing_bboxes is not None:
+                    old_boxes = existing_bboxes.get(p_idx, [])
+                    new_candidates = [
+                        c for c in candidates
+                        if not matches_existing(from_legacy_yxyx(c["bbox"]), old_boxes)
+                    ]
+                    skipped_existing += len(candidates) - len(new_candidates)
+                    candidates = new_candidates
                 if not candidates:
                     continue
 
@@ -901,6 +920,8 @@ class ExtractionPipelineOrchestrator:
         doc.close()
         document.extra_metadata["element_count"] = len(indexed_elements)
         document.extra_metadata["toc_pages_skipped"] = toc_pages_skipped
+        if existing_bboxes is not None:
+            document.extra_metadata["skipped_existing"] = skipped_existing
         return indexed_elements
 
     def index_document(

@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import TargetPriceView from "./TargetPriceView";
 import {
   COMPARE_KRW_UNITS,
+  CompanyCompareResponse,
   CompareMetricsResponse,
   ComparisonCell,
   ComparisonResult,
   FilterOptions,
+  MatchedDocComparison,
   PERIOD_BASIS_LABELS,
 } from "../lib/types";
 
@@ -22,6 +25,16 @@ const PdfViewer = dynamic(() => import("../components/PdfViewer"), {
     </div>
   ),
 });
+
+/** 목표주가 칩의 지표 값. 셀 비교 엔진(/api/compare) 지표가 아니라 매칭 엔진(/api/compare/company, TARGET_PRICE)을 부른다 */
+const TARGET_PRICE_METRIC = "목표주가";
+
+/** 원문 뷰어에 띄울 위치 (셀 비교·목표주가 비교 공용) */
+interface SourceLocation {
+  element_id: string;
+  doc_name: string;
+  page_number: number;
+}
 
 /** 차이가 평균의 몇 % 이상이면 강조할지 (화면 표시용) */
 const HIGHLIGHT_GAP_RATIO = 0.05;
@@ -59,6 +72,8 @@ export default function ComparePage() {
   const [sharedOnly, setSharedOnly] = useState<boolean>(true);
 
   const [result, setResult] = useState<ComparisonResult | null>(null);
+  const [companyResult, setCompanyResult] = useState<CompanyCompareResponse | null>(null);
+  const [sourceDoc, setSourceDoc] = useState<SourceLocation | null>(null);
   const [selectedCell, setSelectedCell] = useState<ComparisonCell | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +135,7 @@ export default function ComparePage() {
         setMetrics(data.metrics || {});
         // 고른 지표가 이 종목에 없으면, 두 곳 이상 있는 첫 지표로 바꾼다
         setMetric((current) => {
+          if (current === TARGET_PRICE_METRIC) return current;
           if (current && data.metrics[current]) return current;
           const first = Object.entries(data.metrics).find(([, n]) => n >= 2);
           return first ? first[0] : Object.keys(data.metrics)[0] || "";
@@ -133,15 +149,31 @@ export default function ComparePage() {
   useEffect(() => {
     if (!target || !metric) {
       setResult(null);
+      setCompanyResult(null);
       return;
     }
-    const query = new URLSearchParams({ target, metric });
-    if (unit) query.set("unit", unit);
     window.history.replaceState(null, "", `?${new URLSearchParams({ target, metric }).toString()}`);
-
     setLoading(true);
     setError(null);
     setSelectedCell(null);
+    setSourceDoc(null);
+
+    if (metric === TARGET_PRICE_METRIC) {
+      setResult(null);
+      const companyQuery = new URLSearchParams({ company: target, metric: "TARGET_PRICE" });
+      getJson<CompanyCompareResponse>(`/api/compare/company?${companyQuery.toString()}`)
+        .then(setCompanyResult)
+        .catch((e: Error) => {
+          setCompanyResult(null);
+          setError(e.message);
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    setCompanyResult(null);
+    const query = new URLSearchParams({ target, metric });
+    if (unit) query.set("unit", unit);
     getJson<ComparisonResult>(`/api/compare?${query.toString()}`)
       .then(setResult)
       .catch((e: Error) => {
@@ -269,6 +301,18 @@ export default function ComparePage() {
               지표 <span className="font-normal text-slate-400">(괄호 안은 그 지표가 있는 리포트 수, 2개 이상이어야 비교됩니다 · 비교 가능 {comparableCount}개)</span>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setMetric(TARGET_PRICE_METRIC)}
+                title="리포트마다 목표주가 산출 표를 찾아 나란히 비교합니다 (같은 종목 비교 그룹만)"
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  metric === TARGET_PRICE_METRIC
+                    ? "bg-amber-500 text-white border-amber-500"
+                    : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                }`}
+              >
+                목표주가 (표 단위)
+              </button>
               {metricEntries.length === 0 && (
                 <span className="text-xs text-slate-400">이 종목의 승인된 표에서 비교할 지표를 찾지 못했습니다.</span>
               )}
@@ -302,6 +346,17 @@ export default function ComparePage() {
           <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
           비교 결과를 불러오는 중...
         </div>
+      )}
+
+      {/* 목표주가 비교 (매칭 엔진) */}
+      {!loading && companyResult && metric === TARGET_PRICE_METRIC && (
+        <TargetPriceView
+          result={companyResult}
+          onOpenSource={(doc: MatchedDocComparison) => {
+            if (!doc.element_id || !doc.page_number) return;
+            setSourceDoc({ element_id: doc.element_id, doc_name: doc.doc_name, page_number: doc.page_number });
+          }}
+        />
       )}
 
       {/* 비교 표 */}
@@ -416,6 +471,30 @@ export default function ComparePage() {
           )}
           <div className="px-5 py-2 border-t border-slate-100 text-[11px] text-slate-400">
             차이가 평균의 {HIGHLIGHT_GAP_RATIO * 100}% 이상이면 빨간색으로 표시합니다. 이름이 같은 지표도 계산 기준이 다를 수 있으니 원문을 함께 확인하세요.
+          </div>
+        </section>
+      )}
+
+      {/* 원문 확인 (목표주가 비교) */}
+      {sourceDoc && metric === TARGET_PRICE_METRIC && (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm text-sm">
+            <h2 className="text-base font-bold text-slate-900 mb-3">원문</h2>
+            <div className="text-[11px] text-slate-400 break-all">{sourceDoc.doc_name}</div>
+            <div className="mt-2 text-slate-900">{sourceDoc.page_number}페이지</div>
+            <Link
+              href={`/elements/${sourceDoc.element_id}`}
+              className="inline-block mt-4 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg"
+            >
+              이 표 상세 보기
+            </Link>
+          </div>
+          <div className="lg:col-span-2 h-[720px]">
+            <PdfViewer
+              key={`${sourceDoc.doc_name}-${sourceDoc.page_number}`}
+              pdfUrl={`${backendUrl}/api/files/pdf/${encodeURIComponent(sourceDoc.doc_name)}`}
+              initialPage={sourceDoc.page_number}
+            />
           </div>
         </section>
       )}
