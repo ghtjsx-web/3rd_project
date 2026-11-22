@@ -1,0 +1,53 @@
+{
+  "doc_name": "공공보고서_20260819_경제전망_KDI.pdf",
+  "page_number": 11,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.1736,
+        0.238,
+        0.7805,
+        0.4792
+      ]
+    },
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.5238,
+        0.2577,
+        0.8389,
+        0.4516
+      ]
+    },
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.1744,
+        0.2587,
+        0.4896,
+        0.4515
+      ]
+    },
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.1652,
+        0.6061,
+        0.5993,
+        0.8376
+      ]
+    },
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.5254,
+        0.606,
+        0.8291,
+        0.8209
+      ]
+    }
+  ]
+}
