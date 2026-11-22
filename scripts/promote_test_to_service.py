@@ -13,6 +13,9 @@ scripts/promote_test_to_service.py
 --new-only (add_missing_elements.py 결과용, 결정 22)
 - 반대로 서비스 컬렉션에 element_id가 없는 새 요소만 추가한다. 기존 포인트는 건드리지 않는다.
 - 같은 포인트 ID(같은 문서·페이지·bbox)가 이미 서비스에 있으면 덮어쓰지 않고 건너뛴다.
+- 같은 문서·같은 페이지의 기존 요소(반려 포함)와 위치가 겹치면 중복 의심으로 건너뛴다
+  (IoU ≥ 0.3 또는 한쪽 넓이의 절반 이상이 겹침). 크롭 규칙 변경·회전 페이지로 좌표가 달라진 같은 표를 막는다.
+  확인 후 그래도 넣으려면 --include-overlaps.
 - 표가 비었거나 유형이 무엇이든 추가한다 (확신도가 낮으면 PENDING_REVIEW라 검수 탭으로 간다).
 - 백업 JSON에는 추가한 포인트 ID를 남기고, --rollback은 그 포인트들을 지운다.
 
@@ -40,6 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "figindex"))
 
 try:
+    from shared.coords import iou, overlap_ratio
     from shared.schemas import ElementSearchPayload, ElementType
 except ImportError as e:
     sys.exit(f"shared 모듈을 불러오지 못했습니다: {e}\n'pip install pydantic' 후 다시 실행해 주세요.")
@@ -102,12 +106,37 @@ def plan_promotion(
     return plans, skipped
 
 
+OVERLAP_IOU = 0.3
+OVERLAP_SHARE = 0.5
+
+
+def overlapping_element(
+    payload: Dict[str, Any], service_by_page: Dict[Tuple[str, int], List[Dict[str, Any]]]
+) -> Optional[Dict[str, Any]]:
+    """같은 문서·페이지에서 위치가 겹치는 기존 요소 payload (없으면 None)."""
+    bbox = payload.get("bbox")
+    if not bbox:
+        return None
+    for old in service_by_page.get((payload.get("doc_name"), payload.get("page_number")), []):
+        old_bbox = old.get("bbox")
+        if not old_bbox:
+            continue
+        if (iou(bbox, old_bbox) >= OVERLAP_IOU or overlap_ratio(bbox, old_bbox) >= OVERLAP_SHARE
+                or overlap_ratio(old_bbox, bbox) >= OVERLAP_SHARE):
+            return old
+    return None
+
+
 def plan_new_elements(
-    test_points: List[Dict[str, Any]], service_points: List[Dict[str, Any]]
+    test_points: List[Dict[str, Any]], service_points: List[Dict[str, Any]], include_overlaps: bool = False
 ) -> Tuple[List[Dict[str, Any]], List[Tuple[Dict[str, Any], str]]]:
     """(서비스에 추가할 시험 포인트 목록, (건너뛸 시험 포인트, 이유) 목록). --new-only용."""
     service_eids = {p["payload"].get("element_id") for p in service_points}
     service_ids = {str(p["id"]) for p in service_points}
+    service_by_page: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+    for sp in service_points:
+        pl = sp.get("payload") or {}
+        service_by_page.setdefault((pl.get("doc_name"), pl.get("page_number")), []).append(pl)
     adds, skipped = [], []
     for tp in test_points:
         payload = tp.get("payload") or {}
@@ -116,6 +145,10 @@ def plan_new_elements(
             continue
         if str(tp["id"]) in service_ids:
             skipped.append((tp, "같은 위치(문서·페이지·bbox)의 포인트가 이미 있음"))
+            continue
+        old = None if include_overlaps else overlapping_element(payload, service_by_page)
+        if old is not None:
+            skipped.append((tp, f"중복 의심: 기존 {old.get('element_id')} ({old.get('review_status')})와 위치가 겹침"))
             continue
         try:
             ElementSearchPayload.model_validate(payload)
@@ -135,7 +168,7 @@ def delete_points(qdrant_url: str, collection: str, point_ids: List[Any]) -> Non
 def promote_new_only(args: argparse.Namespace) -> None:
     test_points = scroll(args.qdrant_url, args.test_collection, with_vector=True)
     service_points = scroll(args.qdrant_url, args.service_collection, with_vector=False)
-    adds, skipped = plan_new_elements(test_points, service_points)
+    adds, skipped = plan_new_elements(test_points, service_points, include_overlaps=args.include_overlaps)
 
     label = "추가" if args.apply else "미리보기"
     print(f"[{label} --new-only] {args.test_collection} → {args.service_collection}: 추가 {len(adds)}개, 건너뜀 {len(skipped)}개")
@@ -177,6 +210,8 @@ def main() -> None:
     parser.add_argument("--include-unfilled", action="store_true", help="표가 빈 요소·유형이 바뀐 요소도 반영")
     parser.add_argument("--new-only", action="store_true",
                         help="서비스에 없는 새 요소만 추가 (add_missing_elements.py 결과용)")
+    parser.add_argument("--include-overlaps", action="store_true",
+                        help="--new-only에서 기존 요소와 위치가 겹치는 '중복 의심'도 추가 (확인 후에만)")
     parser.add_argument("--apply", action="store_true", help="백업 후 실제로 반영")
     parser.add_argument("--rollback", help="백업 JSON으로 되돌리기")
     args = parser.parse_args()

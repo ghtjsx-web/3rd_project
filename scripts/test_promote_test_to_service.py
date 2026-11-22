@@ -41,6 +41,8 @@ def test_new_only_adds_elements_missing_from_service():
             _point("s1", "y", table=TABLE),                  # 같은 위치 포인트 ID가 이미 있음
             _point("t3", "z", etype=ElementType.CHART.value),  # 새 차트 (표 없어도 추가)
             _point("t4", "w", table=TABLE)]                  # 새 표
+    for t in test[2:]:
+        t["payload"]["page_number"] = 9                  # 기존 요소가 없는 페이지
     adds, skipped = plan_new_elements(test, service)
     assert [t["id"] for t in adds] == ["t3", "t4"]
     reasons = {t["payload"]["element_id"]: r for t, r in skipped}
@@ -52,3 +54,16 @@ def test_new_only_skips_invalid_payload():
     del broken["payload"]["doc_name"]
     adds, skipped = plan_new_elements([broken], [])
     assert adds == [] and "검증" in skipped[0][1]
+
+
+def test_new_only_skips_element_overlapping_existing_on_same_page():
+    service = [_point("s1", "a")]                       # p.2 bbox [0.1, 0.2, 0.9, 0.6]
+    moved = _point("t1", "m", table=TABLE)
+    moved["payload"]["bbox"] = [0.12, 0.25, 0.9, 0.62]  # 같은 표, 좌표만 조금 다름
+    other_page = _point("t2", "n", table=TABLE)
+    other_page["payload"]["page_number"] = 7
+    adds, skipped = plan_new_elements([moved, other_page], service)
+    assert [t["id"] for t in adds] == ["t2"]
+    assert "중복 의심" in skipped[0][1]
+    adds, _ = plan_new_elements([moved, other_page], service, include_overlaps=True)
+    assert len(adds) == 2
