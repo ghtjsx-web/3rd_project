@@ -8,7 +8,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from add_missing_elements import check_target_collection, find_pdf, gt_missing_pages  # noqa: E402
 
-GT_DIR = Path(__file__).resolve().parent.parent / "figindex" / "data" / "gt" / "table"
+# 저장소에서 실행하면 figindex/data/gt/table, pipeline 컨테이너(/scripts 마운트)에서는 /data/gt/table
+_GT_CANDIDATES = [
+    Path(__file__).resolve().parent.parent / "figindex" / "data" / "gt" / "table",
+    Path("/data/gt/table"),
+]
+GT_DIR = next((p for p in _GT_CANDIDATES if (p / "links.csv").exists()), _GT_CANDIDATES[0])
 
 
 @pytest.mark.parametrize("name", ["figindex_elements_v2", "figindex_elements", "figindex_test_upload", "my_test"])
