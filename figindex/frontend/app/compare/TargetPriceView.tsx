@@ -4,13 +4,25 @@ import { useState } from "react";
 import Link from "next/link";
 import { CompanyCompareResponse, MatchedDocComparison, TableData } from "../lib/types";
 
-/** 목표주가 행·열 이름 */
-const TARGET_PRICE_RE = /목표\s*주가|적정\s*주가|target\s*price/i;
+/** 목표주가 행·열 이름 (목표주가, 적정주가, 적정주당가치·주당가치, Target Price) */
+const TARGET_PRICE_RE = /목표\s*주가|적정\s*주가|주당\s*가치|target\s*price/i;
 /** 목표주가 자체가 아닌 줄 (상승여력·괴리율·변동률 등) */
 const NOT_PRICE_RE = /상승|여력|괴리|변동|대비|%|upside/i;
 
 function isTargetPriceLabel(text: string): boolean {
   return TARGET_PRICE_RE.test(text) && !NOT_PRICE_RE.test(text);
+}
+
+/** 한 칸에 "이름: 값"이 함께 들어간 경우 ("적정주가: 36,000") */
+const LABEL_VALUE_RE = /^(.*?)[:：]\s*([\d,]+(?:\.\d+)?)\s*원?\s*$/;
+
+/** 행·열 이름 끝 괄호 단위 "(원)" */
+const LABEL_UNIT_RE = /\(\s*([^()]+?)\s*\)\s*$/;
+
+/** 목표주가 단위: 행·열 이름에 괄호 단위("(원)", "(달러)")가 있으면 그것, 없으면 "원".
+ *  목표주가는 한 주당 가격이라, 표 전체 단위(십억원·억원 등)나 다른 열 단위를 따르지 않는다 (롯데쇼핑 LS증권 "억원" 오표시) */
+export function targetPriceUnit(label: string): string {
+  return label.match(LABEL_UNIT_RE)?.[1] ?? "원";
 }
 
 interface TargetPriceValue {
@@ -38,7 +50,16 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     for (const column of table.columns.slice(1)) {
       const n = toNumber(row[column]);
       if (n !== null) {
-        return { value: n, label: `${label} · ${column}`, unit: table.unit_by_row?.[label] || table.unit || undefined };
+        return { value: n, label: `${label} · ${column}`, unit: targetPriceUnit(label) };
+      }
+    }
+    // 이름과 값이 한 칸에 붙어 읽힌 경우: "적정주가: 36,000" (카카오 메리츠증권 표3)
+    const inline = label.match(LABEL_VALUE_RE);
+    if (inline) {
+      const n = toNumber(inline[2]);
+      if (n !== null) {
+        const name = inline[1].trim();
+        return { value: n, label, unit: targetPriceUnit(name) };
       }
     }
   }
@@ -47,7 +68,7 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     for (const row of table.rows) {
       const n = toNumber(row[column]);
       if (n !== null) {
-        return { value: n, label: column, unit: table.unit_by_column?.[column] || table.unit || undefined };
+        return { value: n, label: column, unit: targetPriceUnit(column) };
       }
     }
   }
@@ -119,6 +140,10 @@ export default function TargetPriceView({ result, onOpenSource }: Props) {
                       <span title={`원문: ${price.label}`}>
                         {price.value.toLocaleString("ko-KR")}
                         {price.unit && <span className="ml-1 text-[10px] font-sans text-slate-400">{price.unit}</span>}
+                      </span>
+                    ) : doc.matched ? (
+                      <span className="text-[11px] font-sans text-slate-400" title="근거 표에 목표주가·적정주가 줄이 없습니다. 목표주가가 표 밖(요약 박스 등)에 있을 수 있습니다.">
+                        표에 목표주가 없음 · 원문 확인
                       </span>
                     ) : (
                       <span className="text-slate-300">-</span>

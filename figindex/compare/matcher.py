@@ -218,6 +218,11 @@ def score_element_for_metric(
         if not matched_keywords:
             return 0.0, 0, []
 
+        # 표의 행·열 이름에 목표주가 관련 이름이 없으면 탈락 (11-17에 함수만 있고 연결이 빠져 있었음, 11-23 연결)
+        # 예: 캡션 '코스맥스 목표주가 및 주요 재무정보 전망'인데 표에는 매출액·EPS·PER만 있는 경우
+        if not has_target_price_required_labels(table_data):
+            return 0.0, 0, []
+
     elif metric == MetricType.ANNUAL_ESTIMATE:
         # 캡션에 '실적'과 {추정, 전망, 추이, 예상} 중 하나가 함께 있거나 기존 키워드 매칭
         has_rel_word = any(w in clean_cap for w in ["추정", "전망", "추이", "예상"])
