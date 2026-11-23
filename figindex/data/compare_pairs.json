@@ -1,0 +1,222 @@
+[
+  {
+    "company": "KTnG",
+    "count": 3,
+    "same_publish_date": true,
+    "documents": [
+      {
+        "doc_name": "RPT_20261106_KTnG_LS증권.pdf",
+        "source_org": "LS증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261106_KTnG_유안타증권.pdf",
+        "source_org": "유안타증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261106_KTnG_한화투자증권.pdf",
+        "source_org": "한화투자증권",
+        "publish_date": "2026-11-06"
+      }
+    ]
+  },
+  {
+    "company": "LG화학",
+    "count": 3,
+    "same_publish_date": false,
+    "documents": [
+      {
+        "doc_name": "RPT_20261106_LG화학_IBK투자증권.pdf",
+        "source_org": "IBK투자증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261106_LG화학_유진투자증권.pdf",
+        "source_org": "유진투자증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261107_LG화학_상상인증권.pdf",
+        "source_org": "상상인증권",
+        "publish_date": "2026-11-07"
+      }
+    ]
+  },
+  {
+    "company": "SK텔레콤",
+    "count": 3,
+    "same_publish_date": true,
+    "documents": [
+      {
+        "doc_name": "RPT_20261105_SK텔레콤_SK증권.pdf",
+        "source_org": "SK증권",
+        "publish_date": "2026-11-05"
+      },
+      {
+        "doc_name": "RPT_20261105_SK텔레콤_iM증권.pdf",
+        "source_org": "iM증권",
+        "publish_date": "2026-11-05"
+      },
+      {
+        "doc_name": "RPT_20261105_SK텔레콤_유안타증권.pdf",
+        "source_org": "유안타증권",
+        "publish_date": "2026-11-05"
+      }
+    ]
+  },
+  {
+    "company": "SK하이닉스",
+    "count": 3,
+    "same_publish_date": false,
+    "documents": [
+      {
+        "doc_name": "RPT_20261029_SK하이닉스_IBK투자증권.pdf",
+        "source_org": "IBK투자증권",
+        "publish_date": "2026-10-29"
+      },
+      {
+        "doc_name": "RPT_20261029_SK하이닉스_SK증권.pdf",
+        "source_org": "SK증권",
+        "publish_date": "2026-10-29"
+      },
+      {
+        "doc_name": "RPT_20261104_SK하이닉스_iM증권.pdf",
+        "source_org": "iM증권",
+        "publish_date": "2026-11-04"
+      }
+    ]
+  },
+  {
+    "company": "넷마블",
+    "count": 3,
+    "same_publish_date": false,
+    "documents": [
+      {
+        "doc_name": "RPT_20261106_넷마블_메리츠증권.pdf",
+        "source_org": "메리츠증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261109_넷마블_SK증권.pdf",
+        "source_org": "SK증권",
+        "publish_date": "2026-11-09"
+      },
+      {
+        "doc_name": "RPT_20261109_넷마블_유안타증권.pdf",
+        "source_org": "유안타증권",
+        "publish_date": "2026-11-09"
+      }
+    ]
+  },
+  {
+    "company": "롯데쇼핑",
+    "count": 3,
+    "same_publish_date": false,
+    "documents": [
+      {
+        "doc_name": "RPT_20261109_롯데쇼핑_LS증권.pdf",
+        "source_org": "LS증권",
+        "publish_date": "2026-11-09"
+      },
+      {
+        "doc_name": "RPT_20261109_롯데쇼핑_대신증권.pdf",
+        "source_org": "대신증권",
+        "publish_date": "2026-11-09"
+      },
+      {
+        "doc_name": "RPT_20261112_롯데쇼핑_유진투자증권.pdf",
+        "source_org": "유진투자증권",
+        "publish_date": "2026-11-12"
+      }
+    ]
+  },
+  {
+    "company": "삼성전자",
+    "count": 3,
+    "same_publish_date": false,
+    "documents": [
+      {
+        "doc_name": "RPT_20261030_삼성전자_IBK투자증권.pdf",
+        "source_org": "IBK투자증권",
+        "publish_date": "2026-10-30"
+      },
+      {
+        "doc_name": "RPT_20261030_삼성전자_대신증권.pdf",
+        "source_org": "대신증권",
+        "publish_date": "2026-10-30"
+      },
+      {
+        "doc_name": "RPT_20261104_삼성전자_iM증권.pdf",
+        "source_org": "iM증권",
+        "publish_date": "2026-11-04"
+      }
+    ]
+  },
+  {
+    "company": "삼양식품",
+    "count": 3,
+    "same_publish_date": true,
+    "documents": [
+      {
+        "doc_name": "RPT_20261109_삼양식품_LS증권.pdf",
+        "source_org": "LS증권",
+        "publish_date": "2026-11-09"
+      },
+      {
+        "doc_name": "RPT_20261109_삼양식품_유안타증권.pdf",
+        "source_org": "유안타증권",
+        "publish_date": "2026-11-09"
+      },
+      {
+        "doc_name": "RPT_20261109_삼양식품_한화투자증권.pdf",
+        "source_org": "한화투자증권",
+        "publish_date": "2026-11-09"
+      }
+    ]
+  },
+  {
+    "company": "카카오",
+    "count": 3,
+    "same_publish_date": true,
+    "documents": [
+      {
+        "doc_name": "RPT_20261106_카카오_SK증권.pdf",
+        "source_org": "SK증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261106_카카오_메리츠증권.pdf",
+        "source_org": "메리츠증권",
+        "publish_date": "2026-11-06"
+      },
+      {
+        "doc_name": "RPT_20261106_카카오_한화투자증권.pdf",
+        "source_org": "한화투자증권",
+        "publish_date": "2026-11-06"
+      }
+    ]
+  },
+  {
+    "company": "코스맥스",
+    "count": 3,
+    "same_publish_date": true,
+    "documents": [
+      {
+        "doc_name": "RPT_20261112_코스맥스_메리츠증권.pdf",
+        "source_org": "메리츠증권",
+        "publish_date": "2026-11-12"
+      },
+      {
+        "doc_name": "RPT_20261112_코스맥스_유진투자증권.pdf",
+        "source_org": "유진투자증권",
+        "publish_date": "2026-11-12"
+      },
+      {
+        "doc_name": "RPT_20261112_코스맥스_한화투자증권.pdf",
+        "source_org": "한화투자증권",
+        "publish_date": "2026-11-12"
+      }
+    ]
+  }
+]
