@@ -4,13 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { CompanyCompareResponse, MatchedDocComparison, TableData } from "../lib/types";
 
-/** 목표주가 행·열 이름 (목표주가, 적정주가, 적정주당가치·주당가치, Target Price) */
+/** 목표주가 행·열 이름. 리포트가 제시하는 목표주가를 먼저 찾고, 없을 때만 적정주가·주당가치를 쓴다
+ *  (SK하이닉스 iM: 적정주가 2,339,243 / 목표주가 2,300,000 → 2,300,000) */
+const TARGET_PRICE_FIRST_RE = /목표\s*주가|target\s*price/i;
 const TARGET_PRICE_RE = /목표\s*주가|적정\s*주가|주당\s*가치|target\s*price/i;
 /** 목표주가 자체가 아닌 줄 (상승여력·괴리율·변동률 등) */
 const NOT_PRICE_RE = /상승|여력|괴리|변동|대비|%|upside/i;
 
-function isTargetPriceLabel(text: string): boolean {
-  return TARGET_PRICE_RE.test(text) && !NOT_PRICE_RE.test(text);
+function isTargetPriceLabel(text: string, re: RegExp = TARGET_PRICE_RE): boolean {
+  return re.test(text) && !NOT_PRICE_RE.test(text);
 }
 
 /** 한 칸에 "이름: 값"이 함께 들어간 경우 ("적정주가: 36,000") */
@@ -42,11 +44,15 @@ function toNumber(v: unknown): number | null {
 
 /** 매칭된 표에서 목표주가 값 찾기: ① 행 라벨이 목표주가인 행의 첫 숫자 ② 열 이름이 목표주가인 열의 첫 숫자 */
 export function findTargetPrice(table: TableData | null | undefined): TargetPriceValue | null {
+  return findPriceBy(table, TARGET_PRICE_FIRST_RE) ?? findPriceBy(table, TARGET_PRICE_RE);
+}
+
+function findPriceBy(table: TableData | null | undefined, re: RegExp): TargetPriceValue | null {
   if (!table || table.columns.length === 0) return null;
   const labelColumn = table.columns[0];
   for (const row of table.rows) {
     const label = String(row[labelColumn] ?? "");
-    if (!isTargetPriceLabel(label)) continue;
+    if (!isTargetPriceLabel(label, re)) continue;
     for (const column of table.columns.slice(1)) {
       const n = toNumber(row[column]);
       if (n !== null) {
@@ -64,7 +70,7 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     }
   }
   for (const column of table.columns.slice(1)) {
-    if (!isTargetPriceLabel(column)) continue;
+    if (!isTargetPriceLabel(column, re)) continue;
     for (const row of table.rows) {
       const n = toNumber(row[column]);
       if (n !== null) {
