@@ -13,18 +13,16 @@ function isTargetPriceLabel(text: string): boolean {
   return TARGET_PRICE_RE.test(text) && !NOT_PRICE_RE.test(text);
 }
 
+/** 한 칸에 "이름: 값"이 함께 들어간 경우 ("적정주가: 36,000") */
+const LABEL_VALUE_RE = /^(.*?)[:：]\s*([\d,]+(?:\.\d+)?)\s*원?\s*$/;
+
 /** 행·열 이름 끝 괄호 단위 "(원)" */
 const LABEL_UNIT_RE = /\(\s*([^()]+?)\s*\)\s*$/;
 
-/** 목표주가 단위: ① 행·열 이름의 괄호 단위 ② 행·열별 단위 ③ 표 단위가 하나면 그것, 여러 개("십억원, 천주, 원, %")면 그중 "원" */
-export function targetPriceUnit(label: string, specific: string | undefined, tableUnit: string | null | undefined): string | undefined {
-  const fromLabel = label.match(LABEL_UNIT_RE)?.[1];
-  if (fromLabel) return fromLabel;
-  if (specific) return specific;
-  if (!tableUnit) return undefined;
-  const parts = tableUnit.split(/[,，/]/).map((u) => u.trim()).filter(Boolean);
-  if (parts.length <= 1) return parts[0];
-  return parts.includes("원") ? "원" : undefined;
+/** 목표주가 단위: 행·열 이름에 괄호 단위("(원)", "(달러)")가 있으면 그것, 없으면 "원".
+ *  목표주가는 한 주당 가격이라, 표 전체 단위(십억원·억원 등)나 다른 열 단위를 따르지 않는다 (롯데쇼핑 LS증권 "억원" 오표시) */
+export function targetPriceUnit(label: string): string {
+  return label.match(LABEL_UNIT_RE)?.[1] ?? "원";
 }
 
 interface TargetPriceValue {
@@ -52,7 +50,16 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     for (const column of table.columns.slice(1)) {
       const n = toNumber(row[column]);
       if (n !== null) {
-        return { value: n, label: `${label} · ${column}`, unit: targetPriceUnit(label, table.unit_by_row?.[label], table.unit) };
+        return { value: n, label: `${label} · ${column}`, unit: targetPriceUnit(label) };
+      }
+    }
+    // 이름과 값이 한 칸에 붙어 읽힌 경우: "적정주가: 36,000" (카카오 메리츠증권 표3)
+    const inline = label.match(LABEL_VALUE_RE);
+    if (inline) {
+      const n = toNumber(inline[2]);
+      if (n !== null) {
+        const name = inline[1].trim();
+        return { value: n, label, unit: targetPriceUnit(name) };
       }
     }
   }
@@ -61,7 +68,7 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     for (const row of table.rows) {
       const n = toNumber(row[column]);
       if (n !== null) {
-        return { value: n, label: column, unit: targetPriceUnit(column, table.unit_by_column?.[column], table.unit) };
+        return { value: n, label: column, unit: targetPriceUnit(column) };
       }
     }
   }
