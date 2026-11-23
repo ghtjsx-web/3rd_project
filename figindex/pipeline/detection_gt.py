@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -146,6 +147,34 @@ def _doc_kind(doc_name: str) -> str:
         if head.startswith(prefix):
             return prefix
     return head
+
+
+def parse_page_spec(spec: str) -> Tuple[str, int]:
+    """'파일명.pdf:쪽' → (doc_name NFC, page_number). 쪽 번호는 PDF 뷰어 기준(1부터)."""
+    doc_name, sep, page_text = spec.strip().rpartition(":")
+    if not sep or not doc_name or not page_text.strip().isdigit() or int(page_text) < 1:
+        raise ValueError(f"'파일명.pdf:쪽' 형식이 아닙니다: {spec!r}")
+    return unicodedata.normalize("NFC", doc_name.strip()), int(page_text)
+
+
+def read_page_list(path: Path) -> List[Tuple[str, int]]:
+    """한 줄에 '파일명.pdf:쪽' 하나. 빈 줄과 '#' 뒤 설명은 무시한다 (예: data/gt/crop_cut_cases.txt)."""
+    pages: List[Tuple[str, int]] = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            pages.append(parse_page_spec(line))
+    return pages
+
+
+def group_pages_by_doc(pages: Iterable[Tuple[str, int]]) -> Dict[str, List[int]]:
+    """[(doc_name, page_number), ...] → {doc_name: [page_number 오름차순, 중복 제거]} (입력 문서 순서 유지)."""
+    grouped: Dict[str, List[int]] = {}
+    for doc_name, page_number in pages:
+        grouped.setdefault(doc_name, [])
+        if page_number not in grouped[doc_name]:
+            grouped[doc_name].append(page_number)
+    return {doc_name: sorted(nums) for doc_name, nums in grouped.items()}
 
 
 def gt_file_name(doc_name: str, page_number: int) -> str:

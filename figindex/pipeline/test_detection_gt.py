@@ -19,8 +19,11 @@ from detection_gt import (  # noqa: E402
     combine_drafts,
     crop_recall,
     gt_file_name,
+    group_pages_by_doc,
     load_gt_files,
+    parse_page_spec,
     pick_pages,
+    read_page_list,
     yolo_boxes_to_elements,
 )
 from shared.schemas import ElementType, LayoutClass  # noqa: E402
@@ -90,3 +93,28 @@ def test_pick_pages_spreads_kinds_and_limits_docs():
     assert len(picked) == 16 and len(docs) == 4      # 4개 문서 × 4페이지
     assert sum(d.startswith("RPT") for d in docs) == 2 and sum(d.startswith("논문") for d in docs) == 2
     assert picked == pick_pages(pages, total=20, max_docs=4, per_doc=4)  # 항상 같은 결과
+
+
+def test_parse_page_spec_and_errors():
+    assert parse_page_spec(" 논문_A.pdf:10 ") == ("논문_A.pdf", 10)
+    assert parse_page_spec("이름:에콜론.pdf:3") == ("이름:에콜론.pdf", 3)  # 마지막 콜론 기준
+    for bad in ["논문_A.pdf", "논문_A.pdf:", "논문_A.pdf:0", "논문_A.pdf:p3"]:
+        with pytest.raises(ValueError):
+            parse_page_spec(bad)
+
+
+def test_read_page_list_skips_comments_and_groups(tmp_path):
+    f = tmp_path / "pages.txt"
+    f.write_text("# 설명 줄\n\nB.pdf:9  # 시트 25\nA.pdf:3\nB.pdf:6\nB.pdf:9\n", encoding="utf-8")
+    pages = read_page_list(f)
+    assert pages == [("B.pdf", 9), ("A.pdf", 3), ("B.pdf", 6), ("B.pdf", 9)]
+    assert group_pages_by_doc(pages) == {"B.pdf": [6, 9], "A.pdf": [3]}
+
+
+def test_crop_cut_cases_file_is_valid():
+    """잘림 사례 13건 목록(data/gt/crop_cut_cases.txt)이 형식에 맞고 13건인지."""
+    path = FIGINDEX_DIR / "data" / "gt" / "crop_cut_cases.txt"
+    if not path.exists():
+        path = Path("/data/gt/crop_cut_cases.txt")  # pipeline 컨테이너
+    pages = read_page_list(path)
+    assert len(pages) == 13 and len(set(pages)) == 13
