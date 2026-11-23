@@ -6,9 +6,9 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-23 오전. 11-22 발표 준비 작업(`ryu-presentation-prep`)은 `ryu`에 합쳐졌고, 탐지 정답셋 초안 50페이지(15개 문서, 박스 130개, 모두 `reviewed: false`)가 `ryu`에 올라감(`896ca6d`). `main`에는 아직 없음(`ryu`가 5커밋 앞섬)
-2. **방금 한 일과 결과 (2026-11-23)**: 팀장 PC에서 pipeline 이미지 다시 빌드 후 테스트 — pipeline **245건 통과**, scripts 2개 파일 12건 중 1건 실패(`test_gt_missing_pages_from_repo_csv`: 테스트가 저장소 경로만 봐서 컨테이너의 `/data/gt/table`을 못 찾음, 스크립트 동작은 영향 없음) → 테스트가 두 경로를 다 찾도록 고침
-3. **다음 할 일**: ① 팀장 PC에서 pull 후 scripts 테스트 다시 실행(12건 통과 기대) ② `ryu` → `main` PR 병합(팀원4가 `main`을 받아 정답셋 도구·초안을 쓰도록) ③ 팀원4 합류 안내(온보딩 → 역할 문서 1·2단계), 정답셋 50페이지를 팀원4·팀원3이 파일 단위 25개씩 분담 ④ `add_missing_elements.py --from-gt` 한국타이어 1건 `--apply` 시험(`docker compose stop worker` 먼저) ⑤ `/compare` 목표주가 칩 확인, `compare_pairs.json` 배포 방식 결정 ⑥ `python scripts/update_status.py`로 1절 숫자 갱신
+1. **현재 단계**: 11-23. 팀원4 합류일. 11-22에 빠진 요소 307개를 v2에 추가(618 → 925)했고 탐지 정답셋 초안 50쪽을 만들었으나, 이 현황서에는 반영되지 않았던 것을 이번에 바로잡음. `main`은 PR #45로 11-22 작업까지 반영
+2. **방금 한 일과 결과 (11-23)**: ① 팀장 PC 테스트 pipeline 245 통과, scripts 1건 경로 문제 수정(`056ed45`) → PR #45 병합 ② `yolo_trial.py`에 `--page`/`--pages-file` 추가: 지정 페이지에서 지금 방식과 YOLO(캡션·각주 병합)의 실제 크롭 영역을 같은 여백으로 그림 → 잘림 13건(결정 30 ②) 확인용. 목록 `figindex/data/gt/crop_cut_cases.txt` ③ 역할 문서 `4_크롭.md` 2·4단계 갱신(초안 다시 만들지 말 것, 그림 zip, 26/24 분담)
+3. **다음 할 일**: ① 팀장: 초안 그림 50장 `detection_images.zip`을 드라이브 FigIndex_data에 올리기 ② 이 브랜치 PR 병합 후 팀 채팅 공지(새 데이터 zip 교체, pull·build, 정답셋 분담, 검색어 재판정) ③ worker 다시 켜기 ④ 팀원3에게 수치 정답셋 '요소 없음' 16행 연결 목록 전달 → `eval_tables.py` ⑤ `/compare` 목표주가 화면 확인, `compare_pairs.json` 배포 방식 결정 ⑥ `python scripts/update_status.py`
 4. **막힌 것**: 없음
 5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
 
@@ -37,9 +37,12 @@
 | └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-20 18:08:40 KST |
 <!-- AUTO:END -->
 
-수동 기록 (2026-11-20 18:00)
-- v2 618건: 승인 593, 검수대기 8, 반려 17. **표 500개는 A안 벡터**(색인 글자 = 기존 글자 + 표 열·행 이름 최대 40개), 나머지 118개는 그대로. 되돌리기 기준 백업은 팀장 PC `qdrant_backup_before_A`(저장소 밖)
-- 데이터 zip: `figindex_data_20261120.zip` (약 1.03GB, 드라이브 FigIndex_data). A안 벡터 포함
+수동 기록 (11-22~23, 위 자동 표는 `update_status.py`를 돌리기 전이라 11-20 값)
+- v2 **925건**: 11-22에 빠진 요소 307개 추가(`add_missing_elements.py` 260 + 재자원화 p.106용 47, `promote --new-only`, 중복 의심 0). 승인·검수대기 내역은 `update_status.py`로 갱신 필요. 백업: 팀장 PC `C:\workAi\figindex_work\qdrant_backup_20261122`
+  - 47개는 Gemini 503으로 대체 모델 `gemini-3.5-flash-lite`가 분석. 재자원화 p.169~178 설문지 10개가 표로 승인됨, p.180 그림이 TABLE·DIAGRAM 두 번, p.181 그림이 TABLE
+- 검색 (11-22, 925건, `eval_search.py`): `precision_at_5` **0.922**, `search_latency_sec` 0.285. 20번(KDI 실효지급준비율) 1/5·17번(한국은행 수출물가) 1/5는 새 카드가 정답 목록에 없어서일 수 있음 → 두 명 재판정
+- 데이터 zip: **`figindex_data_20261122.zip`** (약 1.07GB, 925건). 초안 그림·`compare_pairs.json`은 없음(11-23 확인)
+- 11-20 기록: 표 500개는 A안 벡터(색인 글자 = 기존 글자 + 표 열·행 이름 최대 40개). 11-22에 추가된 307개는 처음부터 A안 글자로 색인됨
 - 검색 정식 측정 (11-20 17:37~17:47, 팀원2, 새 zip, cold 기준, 켬/끔 각 3회 재현)
 
 | 지표 | main | B만 | A만 | A+B (지금 main + 이 데이터) |
@@ -54,7 +57,7 @@
 - 오분류 점검 88건 완료: 맞음 56, 틀림 32 (요소 아님 17, 잘림 13, 캡션 3, 노이즈 1, 유형 0)
 - 표 평가 (11-19 12:00, `eval_tables.py`): `table_valid_rate` 0.998 (488/489), `cell_accuracy` 0.592 (468/790), `gt_table_coverage` 0.467 (14/30), `cell_accuracy_extracted` 1.000 (468/468)
 - 수치 정답셋: `figindex/data/gt/table/cells.csv` 표 30개, 숫자 셀 790개. 연결 `links.csv` 30/30 (같은 표 14, 요소 없음 16)
-- 테스트 (11-20, 팀장 PC Docker): pipeline 231건 통과(`test_index_text.py` 5건 포함), `scripts/test_reembed_table_vectors.py` 4건, `backend/app/test_search_rerank.py` 7건
+- 테스트 (11-23, 팀장 PC Docker): pipeline 245건 통과, scripts `test_add_missing_elements.py`·`test_promote_test_to_service.py` 12건 중 11건(1건은 경로 문제, `056ed45`에서 수정). 이번 변경으로 `test_detection_gt.py` 3건 추가(Docker 밖 9/9 통과)
 
 ---
 
@@ -62,12 +65,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
-| **11-23 09:40** | 11-22 작업 팀장 PC 테스트, scripts 테스트 경로 수정 (Claude) | `scripts/test_add_missing_elements.py` | `docker compose --profile index build pipeline`, `pytest -q`(pipeline), `pytest /scripts/test_add_missing_elements.py /scripts/test_promote_test_to_service.py` | pipeline 245 통과, scripts 11/12 → 경로 수정 후 Docker 밖 7/7 통과. 팀장 PC 재확인 전 | **확인 필요** |
-| **11-22 17:40** | 발표 준비: 빠진 요소만 추가 재색인, 탐지 정답셋 초안·`crop_recall`, 비교 화면 목표주가 (Claude) | `scripts/add_missing_elements.py`, `scripts/promote_test_to_service.py`, `pipeline/element_match.py`, `pipeline/orchestrator.py`(process_pdf 인자 2개), `shared/coords.py`(`overlap_ratio`), `pipeline/detection_gt.py`, `pipeline/make_detection_drafts.py`, `pipeline/eval_crops.py`, `frontend/app/compare/page.tsx`·`TargetPriceView.tsx`, `frontend/app/lib/types.ts`, `docs/roles/4_크롭.md`, `.gitignore` + 테스트 4개 | `pytest figindex/pipeline scripts` (Docker 밖, fitz·qdrant 없음), 가짜 모듈로 `process_pdf` 건너뛰기 확인, `tsc`(새 TS 파일 오류 0) | 새 테스트 17건 통과, 기존 실패 14건 동일. 실제 PDF·Qdrant 실행은 아직 | **확인 필요** |
-| **11-20 17:45** | A안 데이터에서 재정렬 켬/끔 측정 (팀원2) | — (측정만, 끔은 로컬에서 잠시 바꾸고 되돌림) | `eval_search.py` cold 각 1회 + 재현 2회 | A+B 0.945, A만 0.932, 17개 0.971 동일, 켬/끔 응답 차이 0.01초 안팎 | **PASS** |
-| **11-20 17:38** | PR #43 병합 (팀원1 업로드 화면: 완료 문서 도표 수, 실패 문서 [다시 시도]) | `frontend/app/components/UploadPanel.tsx` | 작성자 실동작 확인(재시도 성공, 409 메시지, DB 복원) | main `9d9fd30` | **PASS** |
-| **11-20 17:00** | A안 2단계: v2 표 500개 벡터 다시 계산 | `scripts/reembed_table_vectors.py`, `scripts/test_reembed_table_vectors.py` | `reembed_table_vectors.py --collection figindex_elements_v2 --apply --confirm-v2` (사전 `data/qdrant` 폴더 백업) | 500/500 교체, 포인트 618 유지, payload 해시 일치, P@5 0.900 → 0.932 | **PASS** |
-
+| **11-23 10:30** | 잘림 13건을 YOLO와 비교할 방법 + 정답셋 분담 문서화 (Claude) | `pipeline/yolo_trial.py`(`--page`, `--pages-file`, `_old_crop`·`_yolo_crop` 그림), `pipeline/detection_gt.py`(`parse_page_spec`, `read_page_list`, `group_pages_by_doc`), `pipeline/test_detection_gt.py`, `data/gt/crop_cut_cases.txt`, `docs/roles/4_크롭.md` | Docker 밖 `pytest test_detection_gt.py`, 가짜 fitz·YOLO 모듈로 `yolo_trial.py --pages-file` 실행 | 9/9 통과, 지정 페이지 3장(범위 밖 1장 건너뜀) 그림 4종 생성 | **확인 필요** (실제 PDF·YOLO) |
+| **11-23 09:40** | 11-22 작업 팀장 PC 테스트, scripts 테스트 경로 수정, PR #45 병합 | `scripts/test_add_missing_elements.py` | `docker compose --profile index build pipeline`, pipeline·scripts pytest | pipeline 245 통과, scripts 11/12 → 경로 수정. main `301103c` | **PASS** |
+| **11-22 저녁** | 빠진 요소 추가: 미리보기 → 시험 컬렉션 `figindex_test_addmissing` → v2 반영 (팀장+Claude) | — (실행) | `add_missing_elements.py --from-gt --apply`, 재자원화 `--max-elements 50`, `promote_test_to_service.py --new-only --apply` | 추가 307(260+47), 중복 의심 0, v2 618 → 925, 정답셋 16쪽 모두 카드 생김 | **PASS** |
+| **11-22 저녁** | 검색 다시 측정, 데이터 zip, 탐지 정답셋 초안 (팀장) | `figindex/data/gt/detection/*.json` 50개 | `eval_search.py`, `make_data_zip.py`, `make_detection_drafts.py --pick 50` | P@5 0.922, 0.285초, zip 1.07GB, 초안 50쪽(15개 문서, 박스 130) | **PASS** |
+| **11-22 17:40** | 발표 준비: 빠진 요소만 추가 재색인 도구, 탐지 정답셋 초안·`crop_recall`, 비교 화면 목표주가 (Claude) | `scripts/add_missing_elements.py`, `scripts/promote_test_to_service.py`, `pipeline/element_match.py`, `pipeline/detection_gt.py`, `pipeline/make_detection_drafts.py`, `pipeline/eval_crops.py`, `frontend/app/compare/*` 등 | Docker 밖 pytest, `tsc` | 새 테스트 17건 통과 (11-23 팀장 PC에서 245 통과로 확인) | **PASS** |
 ---
 
 ## 3. 완료 이력 (Historical Summary)
@@ -96,9 +98,10 @@
 22. **업로드 화면 마무리 (11-20, 팀원1, #43)**: 완료 문서에 "도표 N개"/"도표 없음"(`extra_metadata.element_count`가 있을 때만), 실패 문서에 [다시 시도]와 실패 사유·409 사유 표시.
 23. **A안: 색인 글자에 표 이름 (11-20, 팀장)**: `shared/index_text.py`의 `build_index_text(payload)`를 `orchestrator.index_element_to_qdrant`와 `scripts/rebuild_sparse_vectors.py`가 함께 씀(식이 한 곳). 표가 없거나 빈 표면 예전 글자와 완전히 같음.
 24. **기존 표 벡터 다시 계산 (11-20, 팀장)**: `scripts/reembed_table_vectors.py`. 기본 dry-run, v2는 `--apply --confirm-v2`. 임베딩 실패 시 가짜 벡터 없이 멈춤(멱등, 다시 돌리면 됨). 실행 전 스냅샷을 만들지만 컨테이너 안에만 저장되므로 되돌리기 기준은 `data/qdrant` 폴더 복사.
-25. **빠진 요소만 추가 (11-22, `ryu`에 합침, 미리보기만 실행)**: `process_pdf(existing_bboxes=, doc_overrides=)` — 기존 요소와 IoU ≥ 0.5이거나 후보의 3/4 이상이 기존 박스 안이면 크롭·Gemini 없이 건너뜀(`pipeline/element_match.py`), 새 요소는 기존 doc_id와 문서 메타데이터를 물려받음. `scripts/add_missing_elements.py`는 기본 미리보기, `--apply`는 `figindex_test_*`에만 씀(v1·v2·`figindex_test_upload` 거부), 시험 컬렉션 요소도 기존으로 봐서 이어 돌리기 가능, 기존 요소 없는 문서는 건너뜀. `--from-gt`는 수치 정답셋 '요소 없음' 13개 문서. v2 반영은 `promote_test_to_service.py --new-only`(서비스에 없는 element_id만 추가, 같은 point id면 건너뜀, 백업에 추가 ID를 남기고 `--rollback`은 그 포인트를 지움). 11-22 추가: 같은 문서·페이지의 기존 요소(반려 포함)와 IoU ≥ 0.3이거나 한쪽 넓이 절반 이상 겹치면 "중복 의심"으로 건너뜀(`--include-overlaps`로 해제). 11-22 미리보기: 13개 문서 새 후보 260개(약 19분), 정답셋 16쪽 중 15쪽 도달, 재자원화 p.106만 상한(40) 밖.
-26. **탐지 정답셋 초안·`crop_recall` (11-22, 초안 50페이지 생성 완료·검수 0)**: `pipeline/make_detection_drafts.py --pick 50`이 문서 종류를 돌아가며 PDF 15개·50페이지를 고르고, 지금 방식과 YOLO 박스를 합친 초안(같은 요소면 감싸는 박스, 출처 표시 없음, 위→아래 번호)을 `data/gt/detection/{doc_name}_p{n}.json`(`"reviewed": false`)과 `_images/`(0.1 눈금)에 만든다. 기존 JSON은 덮어쓰지 않음. `pipeline/eval_crops.py`는 `reviewed: true`만으로 두 방식의 `crop_recall`(두 방식 모두 crop_and_save와 같은 패딩)과 페이지당 탐지 시간을 낸다. 역할 문서 `docs/roles/4_크롭.md` 4·5단계 갱신.
+25. **빠진 요소만 추가 (11-22, 실행 완료: v2 618 → 925)**: `process_pdf(existing_bboxes=, doc_overrides=)` — 기존 요소와 IoU ≥ 0.5이거나 후보의 3/4 이상이 기존 박스 안이면 크롭·Gemini 없이 건너뜀(`pipeline/element_match.py`), 새 요소는 기존 doc_id와 문서 메타데이터를 물려받음. `scripts/add_missing_elements.py`는 기본 미리보기, `--apply`는 `figindex_test_*`에만 씀(v1·v2·`figindex_test_upload` 거부), 시험 컬렉션 요소도 기존으로 봐서 이어 돌리기 가능, 기존 요소 없는 문서는 건너뜀. `--from-gt`는 수치 정답셋 '요소 없음' 13개 문서. v2 반영은 `promote_test_to_service.py --new-only`(서비스에 없는 element_id만 추가, 같은 point id면 건너뜀, 백업에 추가 ID를 남기고 `--rollback`은 그 포인트를 지움). 11-22 추가: 같은 문서·페이지의 기존 요소(반려 포함)와 IoU ≥ 0.3이거나 한쪽 넓이 절반 이상 겹치면 "중복 의심"으로 건너뜀(`--include-overlaps`로 해제). 11-22 미리보기: 13개 문서 새 후보 260개(약 19분), 정답셋 16쪽 중 15쪽 도달, 재자원화 p.106만 상한(40) 밖.
+26. **탐지 정답셋 초안·`crop_recall` (11-22, 초안 50쪽 생성·커밋, 검수 0, 분담 팀원4 26·팀원3 24)**: `pipeline/make_detection_drafts.py --pick 50`이 문서 종류를 돌아가며 PDF 15개·50페이지를 고르고, 지금 방식과 YOLO 박스를 합친 초안(같은 요소면 감싸는 박스, 출처 표시 없음, 위→아래 번호)을 `data/gt/detection/{doc_name}_p{n}.json`(`"reviewed": false`)과 `_images/`(0.1 눈금)에 만든다. 기존 JSON은 덮어쓰지 않음. `pipeline/eval_crops.py`는 `reviewed: true`만으로 두 방식의 `crop_recall`(두 방식 모두 crop_and_save와 같은 패딩)과 페이지당 탐지 시간을 낸다. 역할 문서 `docs/roles/4_크롭.md` 4·5단계 갱신.
 27. **비교 화면 목표주가 (11-22, 미확인)**: `/compare` 지표 칩 맨 앞 '목표주가 (표 단위)' → `/api/compare/company?metric=TARGET_PRICE`. 리포트별 목표주가(근거 표의 목표주가·적정주가 행 또는 열의 첫 숫자, 상승여력·괴리율 줄 제외)와 근거 표·페이지, 차이, [원본 표 나란히 보기], 원문 PDF 뷰어. `compare_pairs.json` 그룹에 없는 종목은 안내 문구.
+28. **잘림 사례 페이지 비교 (11-23)**: `yolo_trial.py --pages-file /data/gt/crop_cut_cases.txt`(또는 `--page "파일명.pdf:쪽"`). 지정 페이지마다 `_old_crop.png`(지금 방식 후보)와 `_yolo_crop.png`(YOLO 표·그림 + 캡션·각주 병합)를 `padded_like_cropper`로 같은 여백을 붙여 그림 → 결정 30 ②(잘림 13건 중 9건 이상 해결)를 눈으로 판정. 잘림 13건은 정답셋에 넣지 않음(IoU 0.5 `crop_recall`로는 제목 한 줄 잘림이 안 잡힘).
 
 ---
 
@@ -143,10 +146,13 @@
 | 문제 / 이슈 | 담당 | 상태 | 상세 내용 |
 | :--- | :---: | :---: | :--- |
 | **A+B 대 B만, `RERANK_SHIFT` 재평가** | 검색(팀원2) | 열림 | 튜닝용 검색어 10개 추가, 두 명 판정(결정 29). `RERANK_SHIFT = 5`는 A 전 데이터에서 고른 값 |
-| **색인 한도로 뒤쪽 표 누락** | 파이프라인 | 진행 중 | 수치 정답셋 30개 중 16개 카드 없음(13개 문서). 도구 준비됨: `add_missing_elements.py --from-gt`(완료 이력 25). A안은 PR #44로 main 반영 완료. 미리보기에서 정답 페이지가 '새 후보 없음'이면 규칙이 못 찾는 표(선 없는 표 등) → 크롭 개선 대상. 드론 논문은 미색인 문서라 이 도구 대상 아님(업로드 작업자나 `ingest_missing.py`) |
-| **재색인 뒤 데이터 zip 다시 배포** | 팀장 | 대기 | 11-20 zip은 A안까지만 반영 |
-| **탐지 정답셋 검수 0/50 (초안 50 완료)** | 크롭(팀원4)·팀장 | 열림 | 결정 30이 `crop_recall` 기준인데 정답셋이 없음. 초안 도구 준비됨(완료 이력 26). 드라이브 정답셋 시트 '탐지후보' 탭(개수만)은 쓰지 않음. 팀원3과 25페이지씩 나누면 11/27에 맞출 수 있음 |
-| **`compare_pairs.json`이 git·데이터 zip에 없음** | 팀장 | 확인 필요 | `figindex/data/`라 git 제외. 팀원 PC에서 `/api/compare/company`(목표주가 칩)가 빈 결과일 수 있음. zip에 넣거나 `data/gt`처럼 git에 올릴지 결정 |
+| **색인 한도로 뒤쪽 표 누락** | 파이프라인 | 해결(11-22) | v2에 307개 추가, 정답셋 16쪽 모두 카드 생김. 남은 일: 팀원3이 '요소 없음' 16행에 새 element_id 연결 → `eval_tables.py`로 `gt_table_coverage` 다시 측정. 아래는 11-22 이전 기록: | 수치 정답셋 30개 중 16개 카드 없음(13개 문서). 도구 준비됨: `add_missing_elements.py --from-gt`(완료 이력 25). A안은 PR #44로 main 반영 완료. 미리보기에서 정답 페이지가 '새 후보 없음'이면 규칙이 못 찾는 표(선 없는 표 등) → 크롭 개선 대상. 드론 논문은 미색인 문서라 이 도구 대상 아님(업로드 작업자나 `ingest_missing.py`) |
+| **재색인 뒤 데이터 zip 다시 배포** | 팀장 | 공지 대기 | `figindex_data_20261122.zip`(925건) 드라이브 업로드 완료, 팀 공지 아직 |
+| **탐지 정답셋 그림 배포** | 팀장 | 진행 중 | 그림은 git 제외·데이터 zip에도 없음. 팀원 PC에서 `--pick 50`을 다시 돌리면 같은 페이지를 "이미 있음"으로 건너뛰어 그림이 안 생김 → 팀장 PC 그림 50장을 `detection_images.zip`으로 드라이브에 |
+| **검색어 20·17번 정답 재판정** | 검색(팀원2)·정답셋(팀원3) | 열림 | 925건 뒤 1/5. 새 카드가 관련 있으면 정답 목록 추가(두 명 판정, 결정 29) |
+| **새 요소 품질** | 파이프라인 | 참고 | 대체 모델로 분석된 47개, 재자원화 설문지 10개(APPROVED), p.180·181 그림 오분류. 확신도 값이 0.859·0.984·0.9733에 몰림(발표 질문 대비) |
+| **탐지 정답셋 검수 0/50 (초안 50 완료)** | 크롭(팀원4)·정답셋(팀원3) | 열림 | 분담 팀원4 26쪽·팀원3 24쪽(`4_크롭.md` 4단계 표). 끝나면 `eval_crops.py` → 크롭 방식 결정 |
+| **`compare_pairs.json`이 git·데이터 zip에 없음** | 팀장 | 결정 대기 | 11-22 zip에도 없음(11-23 확인). | `figindex/data/`라 git 제외. 팀원 PC에서 `/api/compare/company`(목표주가 칩)가 빈 결과일 수 있음. zip에 넣거나 `data/gt`처럼 git에 올릴지 결정 |
 | **크롭 품질 (팀원4)** | 크롭(팀원4) | 열림 | 잘림 13건(표 제목 9, 하단 주석·출처 5, 단위 1, 차트·다이어그램 2), 상단 본문 노이즈 15건. 원인 추정: `cropper.py`의 제목 위 25pt 고정, 주석 접두어 4개뿐, 차트 높이 180pt 고정. 전달 자료·점검표 전달 완료 |
 | **배포 후 확인 2건** | 팀장 | 결과 미기록 | 팀장 PC `register_existing_pdfs`(기대: 141개 확인, 신규 0), 검수 탭 A키 승인이 ReviewLog에 APPROVE로 남는지(시험 컬렉션 `figindex_test_review`로 확인, 시험 후 DB 복원) |
 | **팀원 PC의 미색인 5건 '업로드됨'** | 참고 | 참고 | 작업자 처리 기록(`element_count`)이 팀장 PC에만 있어 팀원 PC에서는 UPLOADED. 팀원이 작업자를 켜면 시험 컬렉션에 처리됨 |
@@ -206,8 +212,8 @@
 ### 실행 환경 (`figindex/docker-compose.yml`)
 - `figindex-qdrant`, `figindex-backend`, `figindex-frontend` (`QDRANT_COLLECTION=figindex_elements_v2`).
 - `pipeline` 서비스는 `profiles: ["index"]`, `worker` 서비스는 `profiles: ["worker"]`.
-- Qdrant: 서비스 `figindex_elements_v2`(618, 표 500개 A안 벡터), 구버전 `figindex_elements`(525), 시험 `figindex_test_upload`(작업자 결과), `figindex_test_coerce`, `figindex_test_review`. v2·v1 쓰기는 팀장 승인 필요. 데이터 zip은 `figindex_test_*`를 넣지 않는다.
-- 데이터 zip: 최신 `figindex_data_20261120.zip`.
+- Qdrant: 서비스 `figindex_elements_v2`(925, 11-22 추가분 포함 모두 A안 색인 글자), 구버전 `figindex_elements`(525), 시험 `figindex_test_upload`(작업자 결과), `figindex_test_coerce`, `figindex_test_review`. v2·v1 쓰기는 팀장 승인 필요. 데이터 zip은 `figindex_test_*`를 넣지 않는다.
+- 데이터 zip: 최신 `figindex_data_20261122.zip`(925건). 탐지 정답셋 그림은 별도 `detection_images.zip`.
 - 브랜치: `main`(배포), `ryu`(팀장 작업). 팀원 브랜치 `young-search-rerank`(팀원2), `seung-upload-retry`·`seung-test-collection-guard`(팀원1), `sun`(팀원3)은 남긴다(결정 23). GitHub 병합 후 자동 삭제는 꺼져 있다.
 - 팀 구성: 팀장(비교 엔진·통합·파이프라인), 팀원1 업로드 화면, 팀원2 검색, 팀원3 오분류·정답셋(주 3일), 팀원4 크롭(11/23 합류).
 - 관리자 검수 API: `POST /api/review/{element_id}` (헤더 `X-Admin-Password`). 처리할 때마다 ReviewLog 1줄 추가. 다시 시도 API: `POST /api/documents/{doc_id}/retry` (`docs/migration/api_changes.md` 8절). 검색 결과 순서: `api_changes.md` 9절.
@@ -217,8 +223,9 @@
 ## 8. 로드맵 (Roadmap)
 
 - **11/20(금)**: 완료 — PR #42·#43 병합, A안 적용(v2 표 500개), 새 데이터 zip, `ryu` → main.
-- **11/23~24**: 팀원4 합류(PC 세팅, 잘림 사례 확인, `make_detection_drafts.py` 초안 확인·수정 시작, 팀원3과 분담). 팀원2·팀원3 튜닝용 검색어 10개와 두 명 판정. `ryu` → `main` 병합(11-22 작업 테스트 후).
-- **11/25~26**: `add_missing_elements.py --from-gt`로 13개 문서 빠진 요소 추가(시험 컬렉션 → `--new-only` 반영) + 드론 논문 색인, 데이터 zip 다시 배포, 수치 정답셋 다시 측정(`gt_table_coverage`), 팀원3 '요소 없음' 16행 재연결, 정답값 원문 대조.
+- **11/22(일)**: 완료 — 빠진 요소 307개 v2 추가(925), 검색 0.922, 데이터 zip 1122, 탐지 정답셋 초안 50쪽.
+- **11/23~24**: 팀원4 합류(PC 세팅, 잘림 13건 원인 분류, `yolo_trial.py` 비교 + `--pages-file`로 잘림 13건 확인). 정답셋 초안 검수 시작(팀원4 26·팀원3 24). 팀 공지(새 zip 교체). 팀원2·팀원3 검색어 판정(튜닝용 10개 + 20·17번 재판정). PR #45 병합 완료.
+- **11/25~26**: 팀원3 '요소 없음' 16행 재연결 → `eval_tables.py`(`gt_table_coverage`), 드론 논문 색인(업로드 작업자), 정답값 원문 대조, 정답셋 검수 마감 → `eval_crops.py`.
 - **11/27**: 기능 개발 마감, 크롭 방식 결정(결정 30), 업로드 작업자 서비스 v2로 전환.
 - **11/30~12/2**: 지표 측정·버그 수정, (YOLO로 결정되면) 크롭 연결.
 - **12/3**: 시연 리허설.

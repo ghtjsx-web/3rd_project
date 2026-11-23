@@ -5,6 +5,14 @@ DocLayout-YOLO 도표 탐지 성능 시험 및 기존 PDFCropper 비교 스크�
   docker compose build pipeline
   docker compose run --rm pipeline python yolo_trial.py
   docker compose run --rm pipeline python yolo_trial.py --limit 5
+
+특정 페이지만 (크롭 방식 결정 기준 ② 잘림 13건 확인용):
+  docker compose run --rm pipeline python yolo_trial.py --pages-file /data/gt/crop_cut_cases.txt
+  docker compose run --rm pipeline python yolo_trial.py --page "논문_..._KPAHealth.pdf:10"
+  - 페이지를 지정하면 위 두 그림(_yolo, _old)에 더해 실제로 잘릴 영역 그림 2장을 만든다.
+    _old_crop.png  : 지금 방식 후보 + cropper와 같은 패딩
+    _yolo_crop.png : YOLO 표·그림 박스에 캡션·각주를 합친(MERGE_CLASSES) 뒤 같은 패딩
+    두 그림을 나란히 보고 제목·단위·주석·출처가 박스 안에 들어오는지 판단한다.
 """
 
 import argparse
@@ -19,6 +27,8 @@ from huggingface_hub import hf_hub_download
 from doclayout_yolo import YOLOv10
 
 from cropper import PDFCropper
+from detection_gt import group_pages_by_doc, padded_like_cropper, parse_page_spec, read_page_list
+from make_detection_drafts import draw_numbered, find_pdf, rule_elements, yolo_elements
 from shared.coords import norm_to_px
 
 
@@ -60,18 +70,31 @@ def main():
     parser.add_argument("--limit", type=int, default=10, help="앞에서부터 시험할 PDF 개수 (기본: 10)")
     parser.add_argument("--max-pages", type=int, default=4, help="PDF당 확인할 앞 페이지 수 (기본: 4)")
     parser.add_argument("--conf", type=float, default=0.25, help="YOLO 최소 확신도 (기본: 0.25)")
+    parser.add_argument("--page", action="append", default=[],
+                        help="특정 페이지만: 파일명.pdf:쪽 (여러 번 쓸 수 있음). 지정하면 --limit·--max-pages는 무시")
+    parser.add_argument("--pages-file", help="한 줄에 '파일명.pdf:쪽'인 목록 파일 (예: /data/gt/crop_cut_cases.txt)")
     args = parser.parse_args()
 
     pdfs_dir = Path(args.pdfs_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_files = sorted(pdfs_dir.glob("*.pdf"))[: args.limit]
-    if not pdf_files:
-        print(f"[오류] {pdfs_dir} 에 PDF 파일이 없습니다.")
-        return
-
-    print(f"[1/3] 시험 대상 PDF {len(pdf_files)}개 선정 완료 (각 최대 {args.max_pages}페이지)")
+    page_specs = [parse_page_spec(spec) for spec in args.page]
+    if args.pages_file:
+        page_specs += read_page_list(Path(args.pages_file))
+    page_mode = bool(page_specs)
+    if page_mode:
+        # 문서별 지정 페이지 (하위 폴더·한글 NFC/NFD 차이도 찾음)
+        targets = [(find_pdf(pdfs_dir, doc_name), nums) for doc_name, nums in group_pages_by_doc(page_specs).items()]
+        print(f"[1/3] 지정 페이지 {sum(len(n) for _, n in targets)}개 ({len(targets)}개 PDF)")
+    else:
+        pdf_files = sorted(pdfs_dir.glob("*.pdf"))[: args.limit]
+        if not pdf_files:
+            print(f"[오류] {pdfs_dir} 에 PDF 파일이 없습니다.")
+            return
+        targets = [(pdf_path, None) for pdf_path in pdf_files]
+        print(f"[1/3] 시험 대상 PDF {len(pdf_files)}개 선정 완료 (각 최대 {args.max_pages}페이지)")
+    pdf_files = [pdf_path for pdf_path, _ in targets]
     print("[2/3] DocLayout-YOLO 모델 불러오는 중 (/root/.cache)...")
     model_path = hf_hub_download(
         repo_id="juliozhao/DocLayout-YOLO-DocStructBench",
@@ -89,10 +112,17 @@ def main():
     total_yolo_sec = 0.0
 
     print("[3/3] 페이지별 탐지 및 비교 이미지 생성 시작...\n")
-    for pdf_idx, pdf_path in enumerate(pdf_files, start=1):
+    for pdf_idx, (pdf_path, chosen_pages) in enumerate(targets, start=1):
         stem = pdf_path.stem
         doc = fitz.open(str(pdf_path))
-        num_pages = min(args.max_pages, len(doc))
+        if chosen_pages is None:
+            page_numbers = list(range(1, min(args.max_pages, len(doc)) + 1))
+        else:
+            page_numbers = [n for n in chosen_pages if n <= len(doc)]
+            for n in chosen_pages:
+                if n > len(doc):
+                    print(f"   [건너뜀] p.{n}: 이 PDF는 {len(doc)}쪽까지입니다")
+        num_pages = len(page_numbers)
 
         table_total = 0
         figure_total = 0
@@ -100,7 +130,7 @@ def main():
 
         print(f"({pdf_idx}/{len(pdf_files)}) {pdf_path.name} ({num_pages}p)")
 
-        for page_num in range(1, num_pages + 1):
+        for page_num in page_numbers:
             page = doc[page_num - 1]
             page_img = cropper.render_page(doc, page_num)
 
@@ -122,6 +152,14 @@ def main():
             old_img = draw_old_candidates(page_img, old_candidates)
             old_out = out_dir / f"{stem}_p{page_num}_old.png"
             old_img.save(old_out)
+
+            # 3-1) 페이지 지정 시: 실제로 잘릴 영역(패딩 포함)을 두 방식 모두 같은 방식으로 그린다
+            if page_mode:
+                width_pt, height_pt = float(page.rect.width), float(page.rect.height)
+                for suffix, elements in (("old_crop", rule_elements(cropper, page)),
+                                         ("yolo_crop", yolo_elements(model, page_img, args.conf))):
+                    padded = [{**e, "bbox": padded_like_cropper(e["bbox"], width_pt, height_pt)} for e in elements]
+                    draw_numbered(page_img, padded).save(out_dir / f"{stem}_p{page_num}_{suffix}.png")
 
             # 4) 탐지 종류별 통계 집계
             confs_by_cls = defaultdict(list)
@@ -184,6 +222,8 @@ def main():
     avg_per_page = total_yolo_sec / total_pages if total_pages else 0.0
     print("\n" + "=" * 68)
     print(f"DocLayout-YOLO 시험 완료 (총 {len(pdf_files)}개 PDF / {total_pages}페이지)")
+    if page_mode:
+        print("잘릴 영역 비교: *_old_crop.png(지금 방식) / *_yolo_crop.png(YOLO) 를 나란히 보세요.")
     print("=" * 68)
     print(f"{'파일명':<32} {'페이지':>4} {'table':>6} {'figure':>7} {'평균시간':>8}")
     print("-" * 68)

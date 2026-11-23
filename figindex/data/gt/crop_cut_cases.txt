@@ -1,0 +1,16 @@
+# 크롭 잘림 사례 13건 (오분류 점검 88건 중, 「오분류 점검 후보」 시트 번호 · 요소 ID · 잘린 부분)
+# 크롭 방식 결정 기준 ②(13건 중 9건 이상 해결) 확인용. 형식: 파일명.pdf:쪽 (PDF 뷰어 기준, 1부터)
+# 사용: docker compose run --rm pipeline python yolo_trial.py --pages-file /data/gt/crop_cut_cases.txt
+논문_2026_패션크라우드펀딩스토리텔링_FashionBusiness.pdf:6  # 5, fig-daaa9da32ff0, 상단 표 제목 왼쪽
+논문_20260930_자기용서척도한국판타당화_KPAHealth.pdf:10  # 6, fig-458c7a433951, 상단 표 제목 왼쪽 + 하단 참고 설명
+논문_20260105_장애인선수체력_KJSS.pdf:3  # 8, fig-bc28eb276666, 상단 오른쪽 단위
+논문_20260930_자기용서척도한국판타당화_KPAHealth.pdf:8  # 14, fig-e1f520a5c0f7, 상단 표 제목 + 하단 주석
+논문_2026_패션크라우드펀딩스토리텔링_FashionBusiness.pdf:9  # 25, fig-4b4ac8873111, 상단 표 제목 + 주석
+논문_2026_3D프린팅임시수복레진강도_DentalRehab.pdf:4  # 26, fig-7345f162d269, 표 제목
+논문_20260604_미세플라스틱칠게독성SOP_MarineLifeSci.pdf:4  # 29, fig-948233ed2ddd, 표 제목 (상단 노이즈도 있음)
+논문_20260922_전립선암PSMA617_RadiationIndustry.pdf:4  # 42, fig-f3ab248a2e85, 상단 표 제목
+논문_2026_온실가스관측망교차검증_Atmosphere.pdf:3  # 47, fig-28f2b2061a15, 표 제목 (상단 노이즈도 있음)
+논문_20260828_역량가시화학습진보도_교육과정평가연구.pdf:11  # 48, fig-69cf1df8328c, 표 하단 출처
+RPT_20261107_LG화학_상상인증권.pdf:2  # 80, fig-e6985b488dfe, 표 제목 + 하단 출처 (캡션도 다름)
+RPT_20261106_롯데에너지머티리얼즈_유진투자증권.pdf:1  # 87, fig-964745d79383, 차트 자체 (상단 노이즈도 있음)
+논문_2026_나노다공성점접착소재동향_AdhesionCoating.pdf:1  # 88, fig-d88810648505, 다이어그램 자체
