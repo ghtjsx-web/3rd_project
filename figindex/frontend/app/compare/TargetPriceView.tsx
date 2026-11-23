@@ -194,7 +194,7 @@ export default function TargetPriceView({ result, onOpenSource }: Props) {
 
       <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
         <span className="text-[11px] text-slate-400">
-          목표주가 값은 근거 표에서 &apos;목표주가·적정주가&apos; 행(또는 열)의 첫 숫자입니다. 원문과 함께 확인하세요.
+          목표주가 값은 근거 표의 &apos;목표주가&apos; 행(또는 열)의 첫 숫자이고, 그 줄이 없으면 &apos;적정주가·적정주당가치&apos;를 씁니다. 원문과 함께 확인하세요.
         </span>
         {matched.length >= 1 && (
           <button
