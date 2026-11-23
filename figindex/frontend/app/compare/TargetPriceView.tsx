@@ -4,13 +4,27 @@ import { useState } from "react";
 import Link from "next/link";
 import { CompanyCompareResponse, MatchedDocComparison, TableData } from "../lib/types";
 
-/** 목표주가 행·열 이름 */
-const TARGET_PRICE_RE = /목표\s*주가|적정\s*주가|target\s*price/i;
+/** 목표주가 행·열 이름 (목표주가, 적정주가, 적정주당가치·주당가치, Target Price) */
+const TARGET_PRICE_RE = /목표\s*주가|적정\s*주가|주당\s*가치|target\s*price/i;
 /** 목표주가 자체가 아닌 줄 (상승여력·괴리율·변동률 등) */
 const NOT_PRICE_RE = /상승|여력|괴리|변동|대비|%|upside/i;
 
 function isTargetPriceLabel(text: string): boolean {
   return TARGET_PRICE_RE.test(text) && !NOT_PRICE_RE.test(text);
+}
+
+/** 행·열 이름 끝 괄호 단위 "(원)" */
+const LABEL_UNIT_RE = /\(\s*([^()]+?)\s*\)\s*$/;
+
+/** 목표주가 단위: ① 행·열 이름의 괄호 단위 ② 행·열별 단위 ③ 표 단위가 하나면 그것, 여러 개("십억원, 천주, 원, %")면 그중 "원" */
+export function targetPriceUnit(label: string, specific: string | undefined, tableUnit: string | null | undefined): string | undefined {
+  const fromLabel = label.match(LABEL_UNIT_RE)?.[1];
+  if (fromLabel) return fromLabel;
+  if (specific) return specific;
+  if (!tableUnit) return undefined;
+  const parts = tableUnit.split(/[,，/]/).map((u) => u.trim()).filter(Boolean);
+  if (parts.length <= 1) return parts[0];
+  return parts.includes("원") ? "원" : undefined;
 }
 
 interface TargetPriceValue {
@@ -38,7 +52,7 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     for (const column of table.columns.slice(1)) {
       const n = toNumber(row[column]);
       if (n !== null) {
-        return { value: n, label: `${label} · ${column}`, unit: table.unit_by_row?.[label] || table.unit || undefined };
+        return { value: n, label: `${label} · ${column}`, unit: targetPriceUnit(label, table.unit_by_row?.[label], table.unit) };
       }
     }
   }
@@ -47,7 +61,7 @@ export function findTargetPrice(table: TableData | null | undefined): TargetPric
     for (const row of table.rows) {
       const n = toNumber(row[column]);
       if (n !== null) {
-        return { value: n, label: column, unit: table.unit_by_column?.[column] || table.unit || undefined };
+        return { value: n, label: column, unit: targetPriceUnit(column, table.unit_by_column?.[column], table.unit) };
       }
     }
   }
@@ -119,6 +133,10 @@ export default function TargetPriceView({ result, onOpenSource }: Props) {
                       <span title={`원문: ${price.label}`}>
                         {price.value.toLocaleString("ko-KR")}
                         {price.unit && <span className="ml-1 text-[10px] font-sans text-slate-400">{price.unit}</span>}
+                      </span>
+                    ) : doc.matched ? (
+                      <span className="text-[11px] font-sans text-slate-400" title="근거 표에 목표주가·적정주가 줄이 없습니다. 목표주가가 표 밖(요약 박스 등)에 있을 수 있습니다.">
+                        표에 목표주가 없음 · 원문 확인
                       </span>
                     ) : (
                       <span className="text-slate-300">-</span>
