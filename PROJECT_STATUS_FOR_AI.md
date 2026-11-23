@@ -37,8 +37,8 @@
 | └ **검사 실패(FAIL) 항목** | 없음 | 2026-11-23 10:22:35 KST |
 <!-- AUTO:END -->
 
-수동 기록 (11-22~23, 위 자동 표는 `update_status.py`를 돌리기 전이라 11-20 값)
-- v2 **925건**: 11-22에 빠진 요소 307개 추가(`add_missing_elements.py` 260 + 재자원화 p.106용 47, `promote --new-only`, 중복 의심 0). 승인·검수대기 내역은 `update_status.py`로 갱신 필요. 백업: 팀장 PC `C:\workAi\figindex_work\qdrant_backup_20261122`
+수동 기록 (11-22~23, 위 자동 표는 11-23 10:22 팀장 PC 측정)
+- v2 **925건**: 11-22에 빠진 요소 307개 추가(`add_missing_elements.py` 260 + 재자원화 p.106용 47, `promote --new-only`, 중복 의심 0). 승인 895, 검수대기 13, 반려 17. 백업: 팀장 PC `C:\workAi\figindex_work\qdrant_backup_20261122`
   - 47개는 Gemini 503으로 대체 모델 `gemini-3.5-flash-lite`가 분석. 재자원화 p.169~178 설문지 10개가 표로 승인됨, p.180 그림이 TABLE·DIAGRAM 두 번, p.181 그림이 TABLE
 - 검색 (11-22, 925건, `eval_search.py`): `precision_at_5` **0.922**, `search_latency_sec` 0.285. 20번(KDI 실효지급준비율) 1/5·17번(한국은행 수출물가) 1/5는 새 카드가 정답 목록에 없어서일 수 있음 → 두 명 재판정
 - 데이터 zip: **`figindex_data_20261122.zip`** (약 1.07GB, 925건). 초안 그림·`compare_pairs.json`은 없음(11-23 확인)
