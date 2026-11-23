@@ -39,7 +39,7 @@ except ImportError as e:  # pydantic이 없는 PC
 GT_DIR = REPO_ROOT / "figindex" / "data" / "gt" / "table"
 LINK_MISSING = "요소 없음"
 
-NUMERIC_SHARE = 0.8   # 첫 열 값 중 숫자 비율이 이 이상이면 행 이름 누락 의심
+NUMERIC_SHARE = 0.75  # 첫 열 값 중 숫자 비율이 이 이상이면 행 이름 누락 의심 (확신도 임계값과 무관)
 MIN_ROWS = 2
 
 _NUMERIC_RE = re.compile(r"^[\s(△▲▼+\-−]*[\d][\d,]*(\.\d+)?\s*[%)배원]?\s*\)?$")
