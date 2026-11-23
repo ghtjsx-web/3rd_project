@@ -6,11 +6,11 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-23. 팀원4 합류일. 11-22에 빠진 요소 307개를 v2에 추가(618 → 925)했고 탐지 정답셋 초안 50쪽을 만들었으나, 이 현황서에는 반영되지 않았던 것을 이번에 바로잡음. `main`은 PR #45로 11-22 작업까지 반영
-2. **방금 한 일과 결과 (11-23)**: ① 팀장 PC 테스트 pipeline 245 통과, scripts 1건 경로 문제 수정(`056ed45`) → PR #45 병합 ② `yolo_trial.py`에 `--page`/`--pages-file` 추가: 지정 페이지에서 지금 방식과 YOLO(캡션·각주 병합)의 실제 크롭 영역을 같은 여백으로 그림 → 잘림 13건(결정 30 ②) 확인용. 목록 `figindex/data/gt/crop_cut_cases.txt` ③ 역할 문서 `4_크롭.md` 2·4단계 갱신(초안 다시 만들지 말 것, 그림 zip, 26/24 분담)
-3. **다음 할 일**: ① 팀장: 초안 그림 50장 `detection_images.zip`을 드라이브 FigIndex_data에 올리기 ② 이 브랜치 PR 병합 후 팀 채팅 공지(새 데이터 zip 교체, pull·build, 정답셋 분담, 검색어 재판정) ③ worker 다시 켜기 ④ 팀원3에게 수치 정답셋 '요소 없음' 16행 연결 목록 전달 → `eval_tables.py` ⑤ `/compare` 목표주가 화면 확인, `compare_pairs.json` 배포 방식 결정 ⑥ `python scripts/update_status.py`
+1. **현재 단계**: 11-23 마감. 팀원4 합류일. `main`은 PR #48(`76add05`)까지. `ryu`에 PR #49(표 점검 스크립트 + 수치 정답셋 16행 재연결 + 채점 가운뎃점 보완) 병합 대기. 팀원3 탐지 정답셋 24쪽 PR #50(`feat/detection-gt-seohyun`) 올라옴
+2. **방금 한 일과 결과 (11-23)**: ① PR #45~#48 병합(정답셋 초안 50쪽, `yolo_trial.py --pages-file`, 목표주가 비교 수정, `compare_pairs.json`) ② SK하이닉스 iM 표1 행 이름 누락을 검수 API로 수정 ③ `check_table_quality.py`로 '요소 없음' 16행 재연결 → `gt_table_coverage` 30/30, `cell_accuracy` 0.592 → 0.938(빠진 49칸 모두 이름 불일치, '값 다름' 0. 41칸은 대체 모델 `gemini-3.5-flash-lite` 오독) ④ 채점 가운뎃점 통일(`9fbf027`, 예상 0.948) ⑤ 확신도 몰림 원인 정리(`detection_score` 0.92 고정, 표 0.984 / 차트 0.9733) ⑥ 팀원3 튜닝용 검색어 판정 받음(O 43/61), 팀원2 파일은 판정 빈 20·17번 재판정 목록
+3. **다음 할 일**: ① 팀장 PC `eval_tables.py` 재측정 ② PR #49 병합 ③ PR #50의 `reviewed: false` 4쪽 처리 기준 결정(OECD p.1·2 '요소아님', KDI p.11 여러 패널 차트·주석, 바이오 p.5 그림 이미지) ④ 팀원2: 튜닝용 판정 파일 + 출처 대응표, 20번 판정 기준 먼저 ⑤ 중복 의심 2쌍(넷마블 유안타 p.5, KT&G 유안타 p.10), 행 이름 누락 의심 2건 화면 확인 ⑥ 목요일 저녁 정답셋 PR(#50 + 팀원4) 병합 → `eval_crops.py` → 금요일 크롭 방식 결정
 4. **막힌 것**: 없음
-5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
+5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개와 `MetricType`을 `schemas.py`로 옮길지 ② 대체 모델 47개 재추출 여부(Claude 권장: 안 함, 발표에서 설명) ③ `evaluator.py`의 `self_consistency` 미실행 시 1.0 처리(AGENTS 5절 '적용 안 한 신호는 None'과 다름, 고치면 `PIPELINE_VERSION` 올림 대상, 발표 후 권장)
 
 ---
 
