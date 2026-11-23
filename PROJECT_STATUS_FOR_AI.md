@@ -65,11 +65,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-23 10:50** | 목표주가 근거 표 검사 연결: 행·열 이름에 목표주가 관련 이름이 없는 표는 탈락 (Claude) | `compare/matcher.py`(`has_target_price_required_labels` 호출 추가), `compare/metrics.py`(`주당가치` 추가), `compare/test_matcher_target_price.py`(4건) | Docker 밖 pytest | 4/4 통과. 코스맥스 한화 표(재무 항목만) 탈락, 메리츠·유진 유지. 팀장 PC `run_compare_matrix.py` 전후 비교는 아직 | **확인 필요** |
 | **11-23 10:40** | `/compare` 목표주가 칩 확인: 코스맥스 3개 중 메리츠·한화 "-", 유진 단위 섞임 → 화면 코드 수정 (Claude) | `frontend/app/compare/TargetPriceView.tsx` | 팀장 PC 응답 JSON(`/api/compare/company?company=코스맥스&metric=TARGET_PRICE`)으로 `findTargetPrice` 실행 | 메리츠 316,000원(`적정주당가치 (원)` 2026E), 유진 420,000원, 한화 "표에 목표주가 없음"(근거 표에 목표주가 줄 자체가 없음). `적정 시가총액`·`Target PER`은 안 잡힘 | **확인 필요** (화면) |
 | **11-23 10:30** | 잘림 13건을 YOLO와 비교할 방법 + 정답셋 분담 문서화 (Claude) | `pipeline/yolo_trial.py`(`--page`, `--pages-file`, `_old_crop`·`_yolo_crop` 그림), `pipeline/detection_gt.py`(`parse_page_spec`, `read_page_list`, `group_pages_by_doc`), `pipeline/test_detection_gt.py`, `data/gt/crop_cut_cases.txt`, `docs/roles/4_크롭.md` | Docker 밖 `pytest test_detection_gt.py`, 가짜 fitz·YOLO 모듈로 `yolo_trial.py --pages-file` 실행 | 9/9 통과, 지정 페이지 3장(범위 밖 1장 건너뜀) 그림 4종 생성 | **확인 필요** (실제 PDF·YOLO) |
 | **11-23 09:40** | 11-22 작업 팀장 PC 테스트, scripts 테스트 경로 수정, PR #45 병합 | `scripts/test_add_missing_elements.py` | `docker compose --profile index build pipeline`, pipeline·scripts pytest | pipeline 245 통과, scripts 11/12 → 경로 수정. main `301103c` | **PASS** |
 | **11-22 저녁** | 빠진 요소 추가: 미리보기 → 시험 컬렉션 `figindex_test_addmissing` → v2 반영 (팀장+Claude) | — (실행) | `add_missing_elements.py --from-gt --apply`, 재자원화 `--max-elements 50`, `promote_test_to_service.py --new-only --apply` | 추가 307(260+47), 중복 의심 0, v2 618 → 925, 정답셋 16쪽 모두 카드 생김 | **PASS** |
-| **11-22 저녁** | 검색 다시 측정, 데이터 zip, 탐지 정답셋 초안 (팀장) | `figindex/data/gt/detection/*.json` 50개 | `eval_search.py`, `make_data_zip.py`, `make_detection_drafts.py --pick 50` | P@5 0.922, 0.285초, zip 1.07GB, 초안 50쪽(15개 문서, 박스 130) | **PASS** |
 ---
 
 ## 3. 완료 이력 (Historical Summary)
@@ -100,7 +100,7 @@
 24. **기존 표 벡터 다시 계산 (11-20, 팀장)**: `scripts/reembed_table_vectors.py`. 기본 dry-run, v2는 `--apply --confirm-v2`. 임베딩 실패 시 가짜 벡터 없이 멈춤(멱등, 다시 돌리면 됨). 실행 전 스냅샷을 만들지만 컨테이너 안에만 저장되므로 되돌리기 기준은 `data/qdrant` 폴더 복사.
 25. **빠진 요소만 추가 (11-22, 실행 완료: v2 618 → 925)**: `process_pdf(existing_bboxes=, doc_overrides=)` — 기존 요소와 IoU ≥ 0.5이거나 후보의 3/4 이상이 기존 박스 안이면 크롭·Gemini 없이 건너뜀(`pipeline/element_match.py`), 새 요소는 기존 doc_id와 문서 메타데이터를 물려받음. `scripts/add_missing_elements.py`는 기본 미리보기, `--apply`는 `figindex_test_*`에만 씀(v1·v2·`figindex_test_upload` 거부), 시험 컬렉션 요소도 기존으로 봐서 이어 돌리기 가능, 기존 요소 없는 문서는 건너뜀. `--from-gt`는 수치 정답셋 '요소 없음' 13개 문서. v2 반영은 `promote_test_to_service.py --new-only`(서비스에 없는 element_id만 추가, 같은 point id면 건너뜀, 백업에 추가 ID를 남기고 `--rollback`은 그 포인트를 지움). 11-22 추가: 같은 문서·페이지의 기존 요소(반려 포함)와 IoU ≥ 0.3이거나 한쪽 넓이 절반 이상 겹치면 "중복 의심"으로 건너뜀(`--include-overlaps`로 해제). 11-22 미리보기: 13개 문서 새 후보 260개(약 19분), 정답셋 16쪽 중 15쪽 도달, 재자원화 p.106만 상한(40) 밖.
 26. **탐지 정답셋 초안·`crop_recall` (11-22, 초안 50쪽 생성·커밋, 검수 0, 분담 팀원4 26·팀원3 24)**: `pipeline/make_detection_drafts.py --pick 50`이 문서 종류를 돌아가며 PDF 15개·50페이지를 고르고, 지금 방식과 YOLO 박스를 합친 초안(같은 요소면 감싸는 박스, 출처 표시 없음, 위→아래 번호)을 `data/gt/detection/{doc_name}_p{n}.json`(`"reviewed": false`)과 `_images/`(0.1 눈금)에 만든다. 기존 JSON은 덮어쓰지 않음. `pipeline/eval_crops.py`는 `reviewed: true`만으로 두 방식의 `crop_recall`(두 방식 모두 crop_and_save와 같은 패딩)과 페이지당 탐지 시간을 낸다. 역할 문서 `docs/roles/4_크롭.md` 4·5단계 갱신.
-27. **비교 화면 목표주가 (11-22, 11-23 수정)**: `/compare` 지표 칩 맨 앞 '목표주가 (표 단위)' → `/api/compare/company?metric=TARGET_PRICE`. 리포트별 목표주가(근거 표의 목표주가·적정주가 행 또는 열의 첫 숫자, 상승여력·괴리율 줄 제외)와 근거 표·페이지, 차이, [원본 표 나란히 보기], 원문 PDF 뷰어. `compare_pairs.json` 그룹에 없는 종목은 안내 문구. 11-23: 목표주가 이름에 `주당가치`(적정주당가치) 추가, 단위는 행·열 이름의 괄호 단위 → 행·열별 단위 → 표 단위(여러 개면 그중 "원") 순, 근거 표에 목표주가 줄이 없으면 "표에 목표주가 없음 · 원문 확인". 코스맥스 한화투자증권은 캡션에 "목표주가"가 있어 골라졌지만 표에는 재무 항목만 있음(목표주가는 표 밖)
+27. **비교 화면 목표주가 (11-22, 11-23 수정)**: `/compare` 지표 칩 맨 앞 '목표주가 (표 단위)' → `/api/compare/company?metric=TARGET_PRICE`. 리포트별 목표주가(근거 표의 목표주가·적정주가 행 또는 열의 첫 숫자, 상승여력·괴리율 줄 제외)와 근거 표·페이지, 차이, [원본 표 나란히 보기], 원문 PDF 뷰어. `compare_pairs.json` 그룹에 없는 종목은 안내 문구. 11-23: 목표주가 이름에 `주당가치`(적정주당가치) 추가, 단위는 행·열 이름의 괄호 단위 → 행·열별 단위 → 표 단위(여러 개면 그중 "원") 순, 근거 표에 목표주가 줄이 없으면 "표에 목표주가 없음 · 원문 확인". 코스맥스 한화투자증권은 캡션에 "목표주가"가 있어 골라졌지만 표에는 재무 항목만 있음(목표주가는 표 밖) 11-23 백엔드: 매칭 엔진이 캡션만 보고 고르던 것을, 표의 행·열 이름에 {목표주가, 적정주가, 적정가치, 주당가치, 적용, Target} 중 하나가 있어야 고르도록 함. 이 검사 함수는 11-17에 만들어졌으나 호출되지 않고 있었음. 백엔드는 `--reload-dir`에 compare가 없어 `docker compose restart backend` 필요
 28. **잘림 사례 페이지 비교 (11-23)**: `yolo_trial.py --pages-file /data/gt/crop_cut_cases.txt`(또는 `--page "파일명.pdf:쪽"`). 지정 페이지마다 `_old_crop.png`(지금 방식 후보)와 `_yolo_crop.png`(YOLO 표·그림 + 캡션·각주 병합)를 `padded_like_cropper`로 같은 여백을 붙여 그림 → 결정 30 ②(잘림 13건 중 9건 이상 해결)를 눈으로 판정. 잘림 13건은 정답셋에 넣지 않음(IoU 0.5 `crop_recall`로는 제목 한 줄 잘림이 안 잡힘).
 
 ---
@@ -168,6 +168,7 @@
 | **CAP_LIMIT 문서 재색인 실행** | 파이프라인 | 대기 | 승인된 23건. 결정 19 재색인과 합칠지 확인 |
 | **잘못된 크롭 (KT&G 유안타 p.10)** | 크롭 | 열림 | 같은 캡션에 다른 크롭 박스 |
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
+| **목표주가 매칭 수 변화 확인** | 팀장 | 열림 | 11-23 검사 연결로 TARGET_PRICE 매칭 15건이 줄 수 있음(잘못 맞춰진 건). `run_compare_matrix.py` 전후 결과로 빠진·바뀐 리포트 기록, `compare_numbers_check.csv` 목표주가 건 대조 |
 | **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | `unit_for`가 % 아닌 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산 영향 확인 필요. 11-23: 목표주가 화면은 행 이름 괄호 단위로 우회, 비교 엔진 쪽은 그대로 |
 | **정답값 원문 대조** | 정답셋(팀원3) | 열림 | 원문 PDF로 표 2~3개 확인 |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (Docker 밖 실행 시) |

@@ -68,6 +68,7 @@ TARGET_PRICE_REQUIRED_LABELS: List[str] = [
     "목표주가",
     "적정주가",
     "적정가치",
+    "주당가치",       # '적정주당가치 (원)' (11-23 추가, 화면 TargetPriceView와 같은 기준)
     "적용",
     "Target",
 ]
