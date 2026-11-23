@@ -65,11 +65,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-23 17:50** | 표 숫자 재측정 + 빠진 칸 원인 확인, 채점 이름 맞추기에 가운뎃점 통일 (Claude, 팀장 승인) | `scripts/eval_tables.py`(`norm_label`: ⋅ ・ ∙ → ·), `scripts/test_eval_tables.py`(+1건) | 팀장 PC `eval_tables.py`, Docker 밖 pytest | `gt_table_coverage` 30/30 = 1.000, `cell_accuracy` 741/790 = 0.938(빠진 49칸 모두 '칸 없음', '값 다름' 0). 원인: T24 가운뎃점 문자 차이(8칸, 이번 수정으로 맞음 → 예상 0.948), T30 '지준율'→'기준율'·T18 '발전량'→'발전력'·'링쾨빙'→'링퀴빙'·T16 행 이름 단위 분리(41칸, 원문 확인 결과 정답셋 맞음, AI 오류). 문제 표 4개 모두 대체 모델 `gemini-3.5-flash-lite` 추출분. pytest 12/12 | **확인 필요** (팀장 PC 재측정) |
 | **11-23 14:45** | T16 재연결 + T17 확인: 팀장이 상세 화면에서 `fig-6cdcce96e35f`(수소 p.33)가 정답 <표 3-1>과, `fig-aa836cb4581d`(고용동향 p.12)가 정답 표와 같은 표임을 확인 | `figindex/data/gt/table/links.csv`, 정답셋 작업 시트 '수치표_연결' 17행 | - | 같은 표 30/30. 행 이름 겹침 0.286은 표기 차이로 보임 → `eval_tables.py` 상세 CSV에서 T16 셀이 이름 불일치로 빠지는지 확인. | **확인 필요** (`eval_tables.py`) |
 | **11-23 13:10** | 팀장 PC에서 `check_table_quality.py` 실행 → 수치 정답셋 '요소 없음' 15행 재연결 (Claude, 팀장 승인) | `figindex/data/gt/table/links.csv`, 정답셋 작업 시트 '수치표_연결' F·H·I·J열(G열 링크 수식 유지, 이전 메모는 [이전 메모]로 남김) | `check_table_quality.py` | 행 이름 누락 의심 18개(캡션상 대부분 순위·번호·척도처럼 첫 열이 원래 숫자인 표, 진짜 의심은 TLB IBK p.1·LG화학 상상인 p.2 정도). 재연결 후보 16개 중 12개 점수 1.0, T17 0.915·T18 0.9·T21 0.917 → 15행 '같은 표'로 반영(29/30), T16(행 이름 겹침 0.286)은 '요소 없음' 유지 | **확인 필요** (T16·T17 사람 확인, `eval_tables.py`) |
 | **11-23 12:40** | 표 품질 점검 스크립트(읽기 전용): 행 이름 열 누락 의심 표 + 수치 정답셋 '요소 없음' 16행 재연결 후보 (Claude) | `scripts/check_table_quality.py`, `scripts/test_check_table_quality.py`(3건) | Docker 밖 pytest, 팀장 PC SK하이닉스 iM 응답(8개 표)으로 실행 | 3/3 통과, 수정 전 `fig-6086b1030698`을 누락 의심으로 잡음. 팀장 PC v2 전체 실행은 아직 | **확인 필요** |
 | **11-23 11:00** | 목표주가 매칭 전후 비교 + 화면 값 읽기 보완 (팀장 실행, Claude 분석) | `frontend/app/compare/TargetPriceView.tsx`("이름: 값" 한 칸 읽기, 단위는 행 이름 괄호 단위 아니면 "원") | `run_compare_matrix.py` 전(`d550f0d` 이전)·후, 응답으로 `findTargetPrice` 실행 | TARGET_PRICE 매칭 15 → 11. 빠진 4건(KT&G·삼양식품·코스맥스 한화, SK하이닉스 iM)은 모두 목표주가 값이 없던 표, 삼성전자 iM은 'Valuation Table'로 바뀌어 369,407원(캡션 36.9만원과 일치). 연간 29·분기 27 변화 없음. 화면 목표주가 값 9/15 → **11/11** | **PASS** |
-| **11-23 10:40** | `/compare` 목표주가 칩 확인: 코스맥스 3개 중 메리츠·한화 "-", 유진 단위 섞임 → 화면 코드 수정 (Claude) | `frontend/app/compare/TargetPriceView.tsx` | 팀장 PC 응답 JSON(`/api/compare/company?company=코스맥스&metric=TARGET_PRICE`)으로 `findTargetPrice` 실행 | 메리츠 316,000원(`적정주당가치 (원)` 2026E), 유진 420,000원, 한화 "표에 목표주가 없음"(근거 표에 목표주가 줄 자체가 없음). `적정 시가총액`·`Target PER`은 안 잡힘 | **확인 필요** (화면) |
 ---
 
 ## 3. 완료 이력 (Historical Summary)
