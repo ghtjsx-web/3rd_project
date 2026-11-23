@@ -1,0 +1,26 @@
+{
+  "doc_name": "보고서20251224바이오경제합성생물학의연구혁신현_한국과학기술기획평가원.pdf",
+  "page_number": 9,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0936,
+        0.1559,
+        0.9066,
+        0.5696
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0927,
+        0.6547,
+        0.9081,
+        0.806
+      ]
+    }
+  ]
+}

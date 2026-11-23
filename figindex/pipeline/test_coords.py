@@ -31,6 +31,7 @@ from shared.coords import (
     pad_bbox_pt,
     bbox_area,
     iou,
+    overlap_ratio,
 )
 
 
@@ -179,3 +180,14 @@ def test_validate_bbox_exceptions():
     with pytest.raises(ValueError, match="y0는 y1보다 작아야"):
         validate_bbox([0.1, 0.8, 0.9, 0.2])
 
+
+
+def test_overlap_ratio():
+    """a 넓이 기준 겹침 비율: 안에 들어가면 1.0, 반만 겹치면 0.5, 안 겹치면 0.0"""
+    outer = [0.0, 0.0, 1.0, 1.0]
+    inner = [0.2, 0.2, 0.4, 0.4]
+    assert overlap_ratio(inner, outer) == pytest.approx(1.0)
+    assert overlap_ratio(outer, inner) == pytest.approx(0.04)
+    assert overlap_ratio([0.0, 0.0, 0.2, 0.2], [0.1, 0.0, 0.3, 0.2]) == pytest.approx(0.5)
+    assert overlap_ratio([0.0, 0.0, 0.1, 0.1], [0.5, 0.5, 0.6, 0.6]) == 0.0
+    assert overlap_ratio([0.3, 0.3, 0.3, 0.5], outer) == 0.0  # 넓이 0

@@ -267,3 +267,24 @@ def iou(a: Sequence[float], b: Sequence[float]) -> float:
         return 0.0
     return inter_area / union_area
 
+
+
+def overlap_ratio(a: Sequence[float], b: Sequence[float]) -> float:
+    """
+    a 넓이 중 b와 겹치는 비율 (교집합 넓이 / a 넓이)을 계산합니다.
+
+    IoU와 달리 한쪽 기준이라, 작은 박스가 큰 박스 안에 거의 들어가 있는지 볼 때 씁니다.
+    (예: 패딩 없는 후보 박스가 패딩된 저장 박스 안에 있는지)
+
+    입력:
+        a: [x0, y0, x1, y1] (기준 박스)
+        b: [x0, y0, x1, y1]
+    출력:
+        0.0 ~ 1.0 실수 (a가 b 안에 완전히 들어가면 1.0, a 넓이가 0이면 0.0)
+    """
+    inter_w = max(0.0, min(float(a[2]), float(b[2])) - max(float(a[0]), float(b[0])))
+    inter_h = max(0.0, min(float(a[3]), float(b[3])) - max(float(a[1]), float(b[1])))
+    area_a = bbox_area(a)
+    if area_a <= 0.0:
+        return 0.0
+    return (inter_w * inter_h) / area_a

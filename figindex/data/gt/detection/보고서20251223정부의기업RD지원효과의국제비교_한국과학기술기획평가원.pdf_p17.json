@@ -1,0 +1,26 @@
+{
+  "doc_name": "보고서20251223정부의기업RD지원효과의국제비교_한국과학기술기획평가원.pdf",
+  "page_number": 17,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0941,
+        0.3757,
+        0.9054,
+        0.5567
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.094,
+        0.6353,
+        0.9056,
+        0.8604
+      ]
+    }
+  ]
+}

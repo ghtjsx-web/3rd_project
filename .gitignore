@@ -80,3 +80,6 @@ Thumbs.db
 figindex/data.zip
 data/pdfs/
 figindex/data/pdfs/
+
+# 탐지 정답셋 초안 그림 (make_detection_drafts.py가 다시 만들 수 있음, JSON만 git에 올린다)
+figindex/data/gt/detection/_images/

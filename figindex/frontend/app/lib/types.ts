@@ -140,3 +140,34 @@ export interface CompareMetricsResponse {
 
 /** /api/compare의 unit 쿼리에 넣을 수 있는 원화 단위 (shared/normalize.py KRW_SCALE) */
 export const COMPARE_KRW_UNITS = ["원", "천원", "백만원", "억원", "십억원", "조원"] as const;
+
+/** GET /api/compare/company 응답의 문서 1건 (backend main.py MatchedDocComparison, 종목·지표 매칭 엔진) */
+export interface MatchedDocComparison {
+  doc_name: string;
+  source_org?: string | null;
+  publish_date?: string | null;
+  matched: boolean;
+  element_id?: string | null;
+  page_number?: number | null;
+  caption?: string | null;
+  match_score: number;
+  second_candidate_element_id?: string | null;
+  table_data?: TableData | null;
+  match_status: string;
+  match_rule?: string | null;
+}
+
+/** 문서들의 같은 행을 맞춘 1줄 (AlignedComparisonRow). values: doc_name → {열 이름: 값} */
+export interface AlignedComparisonRow {
+  row_label: string;
+  raw_labels: Record<string, string>;
+  values: Record<string, Record<string, unknown>>;
+}
+
+/** GET /api/compare/company 응답 (CompareApiResponse) */
+export interface CompanyCompareResponse {
+  company: string;
+  metric: string;
+  documents: MatchedDocComparison[];
+  aligned_rows: AlignedComparisonRow[];
+}

@@ -135,7 +135,10 @@ def get_collection_vector_names(qdrant_url: str, collection_name: str) -> Tuple[
 
 
 def create_qdrant_snapshot(qdrant_url: str, collection_name: str) -> str:
-    """컬렉션 스냅샷을 생성하고 스냅샷 이름을 반환합니다."""
+    """
+    컬렉션 스냅샷을 생성하고 스냅샷 이름을 반환합니다.
+    (과거 스냅샷을 재사용하지 않고 --apply 시 항상 새 스냅샷을 생성합니다)
+    """
     url = f"{qdrant_url.rstrip('/')}/collections/{collection_name}/snapshots"
     req = urllib.request.Request(
         url,
@@ -265,6 +268,7 @@ def run_reembed(
     logger.info("1단계: Qdrant 컬렉션 스냅샷 생성 중...")
     snapshot_name = create_qdrant_snapshot(qdrant_url, collection_name)
     logger.info(f"✔ 스냅샷 생성 완료: {snapshot_name}")
+    logger.info("이 스냅샷은 컨테이너 안에만 있어 docker compose down 시 사라짐. 되돌리기 기준은 data/qdrant 폴더 백업")
 
     # ② OpenAI 클라이언트 초기화
     if OpenAI is None:

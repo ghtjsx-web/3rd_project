@@ -1,0 +1,26 @@
+{
+  "doc_name": "통계보도자료_20260915_2026년8월수출입물가지수_한국은행.pdf",
+  "page_number": 20,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.1414,
+        0.0782,
+        0.863,
+        0.335
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.1371,
+        0.7253,
+        0.8662,
+        0.8544
+      ]
+    }
+  ]
+}

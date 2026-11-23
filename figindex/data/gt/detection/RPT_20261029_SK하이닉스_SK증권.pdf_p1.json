@@ -1,0 +1,44 @@
+{
+  "doc_name": "RPT_20261029_SK하이닉스_SK증권.pdf",
+  "page_number": 1,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0522,
+        0.2788,
+        0.336,
+        0.3822
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0522,
+        0.3974,
+        0.3382,
+        0.5409
+      ]
+    },
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.0538,
+        0.5593,
+        0.3316,
+        0.7105
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0523,
+        0.7412,
+        0.3386,
+        0.9399
+      ]
+    }
+  ]
+}

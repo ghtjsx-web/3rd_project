@@ -1,0 +1,35 @@
+{
+  "doc_name": "RPT_20261029_SK하이닉스_IBK투자증권.pdf",
+  "page_number": 3,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0928,
+        0.1216,
+        0.9071,
+        0.324
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0982,
+        0.3801,
+        0.9087,
+        0.5472
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.0982,
+        0.5664,
+        0.9082,
+        0.7337
+      ]
+    }
+  ]
+}

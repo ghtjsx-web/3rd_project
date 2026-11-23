@@ -1,0 +1,35 @@
+{
+  "doc_name": "리포트202504282025년중국의경제정책방향과시_대외경제정책연구원.pdf",
+  "page_number": 14,
+  "reviewed": false,
+  "memo": "",
+  "elements": [
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.1196,
+        0.4684,
+        0.9328,
+        0.6955
+      ]
+    },
+    {
+      "element_type": "TABLE",
+      "bbox": [
+        0.1095,
+        0.5624,
+        0.9231,
+        0.8198
+      ]
+    },
+    {
+      "element_type": "CHART",
+      "bbox": [
+        0.1206,
+        0.5992,
+        0.4921,
+        0.7595
+      ]
+    }
+  ]
+}
