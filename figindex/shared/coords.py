@@ -171,6 +171,22 @@ def from_legacy_yxyx(legacy_bbox: Sequence[float]) -> List[float]:
     return [float(xmin), float(ymin), float(xmax), float(ymax)]
 
 
+def to_legacy_yxyx(bbox: Sequence[float]) -> List[float]:
+    """
+    신규 표준 [x0, y0, x1, y1]을 구 버전 좌표 [ymin, xmin, ymax, xmax]로 변환합니다.
+    (cropper.crop_and_save가 아직 구 버전 후보 형식을 받으므로, YOLO 후보를 넘길 때 사용)
+
+    입력:
+        bbox: [x0, y0, x1, y1] (0~1 정규화)
+    출력:
+        [ymin, xmin, ymax, xmax] (0~1 정규화)
+    """
+    if len(bbox) != 4:
+        raise ValueError(f"bbox 길이는 4여야 합니다. (입력값: {bbox})")
+    x0, y0, x1, y1 = bbox
+    return [float(y0), float(x0), float(y1), float(x1)]
+
+
 def union_bbox(bboxes: Sequence[Sequence[float]]) -> List[float]:
     """
     여러 개의 정규화 BBox를 모두 감싸는 최소 바운딩 박스를 계산합니다.
