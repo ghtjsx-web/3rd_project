@@ -100,3 +100,22 @@ def test_crop_method_from_env_and_unknown_value(tmp_path, monkeypatch):
     assert PDFCropper(crops_dir=tmp_path).crop_method == CROP_METHOD_RULE
     monkeypatch.setenv("CROP_METHOD", "something")
     assert PDFCropper(crops_dir=tmp_path).crop_method == CROP_METHOD_YOLO
+
+
+def test_duplicate_boxes_for_same_table_are_merged(tmp_path):
+    """11-24 시험 업로드: 같은 표(Stock Indicator)가 두 번 크롭된 경우."""
+    img = Image.new("RGB", (1000, 1000), "white")
+    rows = [
+        ((100, 100, 500, 300), 5, 0.62),   # 같은 표, 점수 낮은 박스
+        ((105, 98, 505, 310), 5, 0.71),    # 같은 표, 점수 높은 박스
+        ((100, 500, 900, 810), 3, 0.90),   # 다른 그림
+        ((150, 550, 450, 750), 3, 0.40),   # 그림 안 패널 → 그림에 합침
+    ]
+    cands = _cropper(tmp_path, rows).detect_yolo_candidates(img)
+
+    assert len(cands) == 2
+    table, figure = cands
+    assert table["detection_score"] == pytest.approx(0.71)
+    assert table["bbox"] == pytest.approx((0.098, 0.1, 0.31, 0.505))
+    assert figure["hint_type"] == ElementType.CHART.value
+    assert figure["bbox"] == pytest.approx((0.5, 0.1, 0.81, 0.9))

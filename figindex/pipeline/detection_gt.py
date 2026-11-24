@@ -15,13 +15,14 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from shared.coords import iou, pad_bbox_pt, union_bbox
+from shared.coords import iou, overlap_ratio, pad_bbox_pt, union_bbox
 from shared.schemas import LAYOUT_TO_ELEMENT, MERGE_CLASSES, ElementType, LayoutClass
 
 CROP_RECALL_IOU = 0.5          # 용어집 12절
 SAME_BOX_IOU = 0.5             # 두 방식이 같은 요소를 찾았다고 보는 기준 (초안 합치기)
 CAPTION_MAX_GAP = 0.03         # 캡션·각주를 본 박스에 붙일 때 허용하는 세로 간격 (페이지 높이 비율)
 CAPTION_MIN_X_OVERLAP = 0.5    # 캡션·각주 너비 중 본 박스와 가로로 겹쳐야 하는 비율
+DUPLICATE_OVERLAP = 0.7        # 한 본 박스가 다른 본 박스에 이만큼 이상 들어가 있으면 같은 요소로 보고 합친다
 
 # cropper.crop_and_save와 같은 패딩 (가로 max(5pt, 폭 0.8%), 세로 max(10pt, 높이 1.5%))
 CROP_PAD_X_PT, CROP_PAD_X_RATIO = 5.0, 0.008
@@ -80,7 +81,28 @@ def yolo_boxes_to_elements(
                 best, best_gap = m, gap
         if best is not None:
             best["bbox"] = union_bbox([best["bbox"], cap])
-    return mains
+    return merge_duplicate_mains(mains)
+
+
+def merge_duplicate_mains(mains: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """같은 표·그림에 YOLO가 본 박스를 두 번 낸 경우 하나로 합친다 (11-24 시험 업로드에서 같은 표가 두 번 크롭됨).
+
+    한 박스 넓이의 DUPLICATE_OVERLAP 이상이 다른 박스와 겹치면(겹침·포함) 같은 요소로 본다.
+    박스는 둘을 감싸는 박스로, 유형과 detection_score는 점수가 높은 쪽을 쓴다.
+    캡션 하나에 패널 여러 개인 그림을 요소 1개로 세는 규칙(용어집 2절)과도 맞는다.
+    """
+    ordered = sorted(mains, key=lambda m: m.get("detection_score", 0.0), reverse=True)
+    kept: List[Dict[str, Any]] = []
+    for cand in ordered:
+        for k in kept:
+            if (overlap_ratio(cand["bbox"], k["bbox"]) >= DUPLICATE_OVERLAP
+                    or overlap_ratio(k["bbox"], cand["bbox"]) >= DUPLICATE_OVERLAP):
+                k["bbox"] = union_bbox([k["bbox"], cand["bbox"]])
+                break
+        else:
+            kept.append(dict(cand))
+    kept.sort(key=lambda m: (m["bbox"][1], m["bbox"][0]))  # 위→아래, 왼→오른
+    return kept
 
 
 def combine_drafts(*box_lists: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
