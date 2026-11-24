@@ -108,7 +108,7 @@ def test_duplicate_boxes_for_same_table_are_merged(tmp_path):
     rows = [
         ((100, 100, 500, 300), 5, 0.62),   # 같은 표, 점수 낮은 박스
         ((105, 98, 505, 310), 5, 0.71),    # 같은 표, 점수 높은 박스
-        ((100, 500, 900, 800), 3, 0.90),   # 다른 그림
+        ((100, 500, 900, 810), 3, 0.90),   # 다른 그림
         ((150, 550, 450, 750), 3, 0.40),   # 그림 안 패널 → 그림에 합침
     ]
     cands = _cropper(tmp_path, rows).detect_yolo_candidates(img)
@@ -118,4 +118,4 @@ def test_duplicate_boxes_for_same_table_are_merged(tmp_path):
     assert table["detection_score"] == pytest.approx(0.71)
     assert table["bbox"] == pytest.approx((0.098, 0.1, 0.31, 0.505))
     assert figure["hint_type"] == ElementType.CHART.value
-    assert figure["bbox"] == pytest.approx((0.5, 0.1, 0.8, 0.9))
+    assert figure["bbox"] == pytest.approx((0.5, 0.1, 0.81, 0.9))
