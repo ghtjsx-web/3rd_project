@@ -34,6 +34,8 @@ def main() -> None:
     parser.add_argument("--pdfs-dir", default="/data/pdfs")
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--include-unreviewed", action="store_true", help="reviewed=false 초안도 포함 (참고용)")
+    parser.add_argument("--no-warmup", dest="warmup", action="store_false",
+                        help="준비 실행 없이 첫 추론 시간까지 평균에 넣기 (11-24 이전 측정 방식)")
     args = parser.parse_args()
 
     gt_dir, pdfs_dir = Path(args.gt_dir), Path(args.pdfs_dir)
@@ -49,20 +51,31 @@ def main() -> None:
     total_gt = 0
     pages: List[Dict[str, Any]] = []
 
+    # 준비 실행(warm-up): YOLO는 첫 추론에 초기화 시간이 붙어 평균을 부풀린다.
+    # 첫 정답 페이지로 한 번 돌려 두고, 시간은 재지 않는다 (모델 불러오기도 위에서 시간 밖).
+    if args.warmup:
+        first = gt_files[0]
+        with fitz.open(str(find_pdf(pdfs_dir, first["doc_name"]))) as doc:
+            rule_elements(cropper, doc[first["page_number"] - 1])
+            yolo_elements(model, cropper.render_page(doc, first["page_number"]), args.conf)
+
     for gt in gt_files:
         gt_boxes = [e["bbox"] for e in gt.get("elements", [])]
         with fitz.open(str(find_pdf(pdfs_dir, gt["doc_name"]))) as doc:
             page = doc[gt["page_number"] - 1]
             width_pt, height_pt = page.rect.width, page.rect.height
 
+            page_sec: Dict[str, float] = {}
             t0 = time.perf_counter()
             rule = rule_elements(cropper, page)
-            seconds["rule"] += time.perf_counter() - t0
+            page_sec["rule"] = time.perf_counter() - t0
 
             t0 = time.perf_counter()
             page_img = cropper.render_page(doc, gt["page_number"])
             yolo = yolo_elements(model, page_img, args.conf)
-            seconds["yolo"] += time.perf_counter() - t0
+            page_sec["yolo"] = time.perf_counter() - t0
+            for m in methods:
+                seconds[m] += page_sec[m]
 
         preds = {
             "rule": [padded_like_cropper(e["bbox"], width_pt, height_pt) for e in rule],
@@ -74,6 +87,7 @@ def main() -> None:
             hits[m] += hit
             row[f"{m}_hit"] = hit
             row[f"{m}_pred_count"] = len(preds[m])
+            row[f"{m}_sec"] = round(page_sec[m], 3)
         total_gt += len(gt_boxes)
         pages.append(row)
 
@@ -82,6 +96,7 @@ def main() -> None:
         "pages": n_pages,
         "gt_elements": total_gt,
         "reviewed_only": not args.include_unreviewed,
+        "warmup": args.warmup,
         **{m: {"crop_recall": round(hits[m] / total_gt, 4) if total_gt else None,
                "matched": hits[m],
                "sec_per_page": round(seconds[m] / n_pages, 3),
@@ -92,7 +107,8 @@ def main() -> None:
     (out_dir / "crop_eval.json").write_text(
         json.dumps({"summary": summary, "pages": pages}, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"정답 {n_pages}페이지, 요소 {total_gt}개" + ("" if not args.include_unreviewed else " (초안 포함, 참고용)"))
+    print(f"정답 {n_pages}페이지, 요소 {total_gt}개" + ("" if not args.include_unreviewed else " (초안 포함, 참고용)")
+          + (", 준비 실행 후 측정" if args.warmup else ", 준비 실행 없음"))
     for m, label in (("rule", "지금 방식"), ("yolo", "YOLO")):
         s = summary[m]
         print(f"  {label:6} crop_recall {s['crop_recall']}  ({s['matched']}/{total_gt}),  "
