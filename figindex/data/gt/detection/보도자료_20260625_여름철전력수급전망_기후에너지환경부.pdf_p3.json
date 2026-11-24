@@ -1,14 +1,14 @@
 {
   "doc_name": "보도자료_20260625_여름철전력수급전망_기후에너지환경부.pdf",
   "page_number": 3,
-  "reviewed": false,
+  "reviewed": true,
   "memo": "",
   "elements": [
     {
-      "element_type": "TABLE",
+      "element_type": "DIAGRAM",
       "bbox": [
-        0.1064,
-        0.4768,
+        0.1004,
+        0.4668,
         0.903,
         0.8759
       ]

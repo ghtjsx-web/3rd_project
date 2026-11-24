@@ -1,15 +1,15 @@
 {
   "doc_name": "공공보고서_20250114_2025년주요업무추진계획_농림축산식품부.pdf",
   "page_number": 13,
-  "reviewed": false,
+  "reviewed": true,
   "memo": "",
   "elements": [
     {
-      "element_type": "TABLE",
+      "element_type": "DIAGRAM",
       "bbox": [
-        0.1234,
-        0.5799,
-        0.9177,
+        0.1184,
+        0.5949,
+        0.9227,
         0.6658
       ]
     }

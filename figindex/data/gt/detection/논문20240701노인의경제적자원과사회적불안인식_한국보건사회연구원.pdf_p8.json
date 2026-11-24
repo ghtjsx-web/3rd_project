@@ -1,7 +1,7 @@
 {
   "doc_name": "논문20240701노인의경제적자원과사회적불안인식_한국보건사회연구원.pdf",
   "page_number": 8,
-  "reviewed": false,
+  "reviewed": true,
   "memo": "",
   "elements": [
     {
@@ -17,8 +17,8 @@
       "element_type": "CHART",
       "bbox": [
         0.5195,
-        0.2057,
-        0.8671,
+        0.2007,
+        0.8691,
         0.4139
       ]
     },
