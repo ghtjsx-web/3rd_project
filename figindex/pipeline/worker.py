@@ -106,8 +106,8 @@ def main() -> None:
     orchestrator = ExtractionPipelineOrchestrator()
     ensure_collection(orchestrator.qdrant_client, orchestrator.collection_name)
     reset = upload_db.reset_processing_documents(DB_PATH)
-    print(f"[worker] 시작: 컬렉션 {orchestrator.collection_name}, 되돌린 PROCESSING {reset}건, "
-          f"{POLL_SECONDS:.0f}초마다 확인", flush=True)
+    print(f"[worker] 시작: 컬렉션 {orchestrator.collection_name}, 크롭 {orchestrator.cropper.active_crop_method}, "
+          f"되돌린 PROCESSING {reset}건, {POLL_SECONDS:.0f}초마다 확인", flush=True)
 
     while True:
         outcome = run_once(

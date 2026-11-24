@@ -5,8 +5,23 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 import fitz  # PyMuPDF
 from PIL import Image
-from shared.coords import px_to_norm, pt_to_norm, union_bbox
+from shared.coords import px_to_norm, pt_to_norm, union_bbox, clip_bbox, to_legacy_yxyx
 from shared.schemas import ElementType
+
+try:
+    from detection_gt import yolo_boxes_to_elements
+except ImportError:
+    from pipeline.detection_gt import yolo_boxes_to_elements
+
+# 크롭 방식 (11-24 결정: YOLO 채택. crop_recall 0.361 → 0.951, 10쪽 14.7초)
+CROP_METHOD_YOLO = "yolo"
+CROP_METHOD_RULE = "rule"
+DEFAULT_CROP_METHOD = CROP_METHOD_YOLO
+# DocLayout-YOLO 체크포인트 (yolo_trial.py·make_detection_drafts.py·eval_crops.py와 같은 것)
+YOLO_REPO = "juliozhao/DocLayout-YOLO-DocStructBench"
+YOLO_FILE = "doclayout_yolo_docstructbench_imgsz1024.pt"
+YOLO_IMGSZ = 1024
+DEFAULT_YOLO_CONF = 0.25  # eval_crops.py 기본값과 같게
 
 # 논문식 캡션 "Fig. 1." — 그림 아래에 붙는다. 블록 맨 앞에서만 인정해 본문 속 "(Fig. 4(a)…)" 언급은 거른다 (0.1.3)
 FIG_ABBREV_CAPTION = re.compile(r"^\s*Fig\.\s*\d+[\.\:]", re.IGNORECASE)
@@ -55,8 +70,15 @@ class PDFCropper:
         padding_pt_horiz: float = 5.0,
         padding_ratio_h: float = 0.015,
         dpi: int = 200,
-        crops_dir: Optional[Path] = None
+        crops_dir: Optional[Path] = None,
+        crop_method: Optional[str] = None,
     ):
+        # 크롭 방식: 인자 > 환경변수 CROP_METHOD > 기본값(yolo). YOLO를 못 불러오면 규칙 방식으로 돌아간다.
+        method = (crop_method or os.getenv("CROP_METHOD", DEFAULT_CROP_METHOD)).strip().lower()
+        self.crop_method = method if method in (CROP_METHOD_YOLO, CROP_METHOD_RULE) else DEFAULT_CROP_METHOD
+        self.yolo_conf = float(os.getenv("YOLO_CONF", DEFAULT_YOLO_CONF))
+        self._yolo_model = None
+        self._yolo_load_failed = False
         self.padding_pt_vert = padding_pt_vert
         self.padding_pt_horiz = padding_pt_horiz
         self.padding_ratio_h = padding_ratio_h
@@ -92,6 +114,71 @@ class PDFCropper:
             "text_content": extracted_text,
             "char_count": len(extracted_text)
         }
+
+    # ------------------------------------------------------------------
+    # YOLO 크롭 (11-24 결정, docs/roles/4_크롭.md 6단계)
+    # ------------------------------------------------------------------
+    def _get_yolo_model(self):
+        """DocLayout-YOLO 모델을 처음 쓸 때 한 번만 불러온다. 실패하면 None (규칙 방식으로 대체)."""
+        if self._yolo_model is not None or self._yolo_load_failed:
+            return self._yolo_model
+        try:
+            from doclayout_yolo import YOLOv10
+            from huggingface_hub import hf_hub_download
+
+            self._yolo_model = YOLOv10(hf_hub_download(repo_id=YOLO_REPO, filename=YOLO_FILE))
+        except Exception as exc:  # 패키지 없음·내려받기 실패 등
+            self._yolo_load_failed = True
+            print(f"    [크롭] YOLO를 불러오지 못해 규칙 방식으로 크롭합니다: {exc}")
+        return self._yolo_model
+
+    @property
+    def active_crop_method(self) -> str:
+        """실제로 쓰는 크롭 방식 (YOLO를 못 불러왔으면 rule)."""
+        if self.crop_method == CROP_METHOD_YOLO and self._get_yolo_model() is not None:
+            return CROP_METHOD_YOLO
+        return CROP_METHOD_RULE
+
+    def detect_yolo_candidates(self, page_img: Image.Image) -> List[Dict[str, Any]]:
+        """YOLO 탐지 → 캡션·각주 병합(MERGE_CLASSES) → crop_and_save가 받는 후보 형식.
+
+        반환: [{'bbox': (ymin, xmin, ymax, xmax), 'hint_type': 'TABLE'|'CHART', 'caption': '', 'detection_score': float}]
+        figure는 CHART/DIAGRAM을 모델이 구분하지 못해 CHART로 넘기고, 유형은 Vision LLM이 정한다(LAYOUT_TO_ELEMENT).
+        """
+        model = self._get_yolo_model()
+        if model is None:
+            return []
+        result = model.predict(page_img, imgsz=YOLO_IMGSZ, conf=self.yolo_conf, device="cpu", verbose=False)[0]
+        width_px, height_px = page_img.size
+        detections = []
+        if result.boxes is not None:
+            for xyxy, cls_id, score in zip(
+                result.boxes.xyxy.tolist(), result.boxes.cls.tolist(), result.boxes.conf.tolist()
+            ):
+                layout_class = str(model.names.get(int(cls_id), ""))
+                detections.append((layout_class, clip_bbox(px_to_norm(xyxy, width_px, height_px)), score))
+        candidates: List[Dict[str, Any]] = []
+        for element in yolo_boxes_to_elements(detections):
+            candidates.append({
+                "bbox": tuple(to_legacy_yxyx(element["bbox"])),
+                "hint_type": element["element_type"],
+                "caption": "",
+                "detection_score": round(element.get("detection_score", 0.0), 4),
+            })
+        candidates.sort(key=lambda c: (c["bbox"][0], c["bbox"][1]))  # 위→아래, 왼→오른
+        return candidates
+
+    def detect_page_candidates(
+        self, doc: fitz.Document, page_num: int
+    ) -> Tuple[List[Dict[str, Any]], Optional[Image.Image]]:
+        """설정한 크롭 방식으로 한 페이지의 후보를 찾는다. (후보, 렌더링한 페이지 그림 또는 None)
+
+        YOLO는 페이지 그림이 필요하므로 렌더링한 그림을 함께 돌려준다 (crop_and_save에 그대로 넘겨 다시 그리지 않게).
+        """
+        if self.active_crop_method == CROP_METHOD_YOLO:
+            page_img = self.render_page(doc, page_num)
+            return self.detect_yolo_candidates(page_img), page_img
+        return self.detect_candidate_boxes(doc[page_num - 1]), None
 
     def detect_candidate_boxes(self, page: fitz.Page) -> List[Dict[str, Any]]:
         """

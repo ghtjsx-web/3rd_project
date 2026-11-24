@@ -44,24 +44,29 @@ def _vertical_gap(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def yolo_boxes_to_elements(
-    detections: Iterable[Tuple[str, Sequence[float]]],
+    detections: Iterable[Sequence[Any]],
 ) -> List[Dict[str, Any]]:
-    """YOLO 탐지 [(layout_class 이름, bbox), ...] → 요소 후보 [{element_type, bbox}].
+    """YOLO 탐지 [(layout_class 이름, bbox[, detection_score]), ...] → 요소 후보 [{element_type, bbox[, detection_score]}].
 
     - LAYOUT_TO_ELEMENT에 있는 클래스(table, figure)만 본 박스가 된다.
     - MERGE_CLASSES(캡션·각주)는 세로로 가깝고 가로로 겹치는 본 박스 하나에 병합한다 (Union BBox).
     - 나머지 클래스는 버린다.
+    - 세 번째 값(detection_score)이 있으면 본 박스의 점수를 그대로 넘긴다 (캡션 점수는 쓰지 않음).
     """
     mains: List[Dict[str, Any]] = []
     merges: List[List[float]] = []
-    for layout_class, bbox in detections:
+    for det in detections:
+        layout_class, bbox = det[0], det[1]
         try:
             cls = LayoutClass(layout_class)
         except ValueError:
             continue
         if cls in LAYOUT_TO_ELEMENT:
             element_type = LAYOUT_TO_ELEMENT[cls] or FIGURE_DRAFT_TYPE
-            mains.append({"element_type": element_type.value, "bbox": [float(v) for v in bbox]})
+            main: Dict[str, Any] = {"element_type": element_type.value, "bbox": [float(v) for v in bbox]}
+            if len(det) > 2 and det[2] is not None:
+                main["detection_score"] = float(det[2])
+            mains.append(main)
         elif cls in MERGE_CLASSES:
             merges.append([float(v) for v in bbox])
 
