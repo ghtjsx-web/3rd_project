@@ -6,11 +6,11 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-23. 팀원4 합류일. 11-22에 빠진 요소 307개를 v2에 추가(618 → 925)했고 탐지 정답셋 초안 50쪽을 만들었으나, 이 현황서에는 반영되지 않았던 것을 이번에 바로잡음. `main`은 PR #45로 11-22 작업까지 반영
-2. **방금 한 일과 결과 (11-23)**: ① 팀장 PC 테스트 pipeline 245 통과, scripts 1건 경로 문제 수정(`056ed45`) → PR #45 병합 ② `yolo_trial.py`에 `--page`/`--pages-file` 추가: 지정 페이지에서 지금 방식과 YOLO(캡션·각주 병합)의 실제 크롭 영역을 같은 여백으로 그림 → 잘림 13건(결정 30 ②) 확인용. 목록 `figindex/data/gt/crop_cut_cases.txt` ③ 역할 문서 `4_크롭.md` 2·4단계 갱신(초안 다시 만들지 말 것, 그림 zip, 26/24 분담)
-3. **다음 할 일**: ① 팀장: 초안 그림 50장 `detection_images.zip`을 드라이브 FigIndex_data에 올리기 ② 이 브랜치 PR 병합 후 팀 채팅 공지(새 데이터 zip 교체, pull·build, 정답셋 분담, 검색어 재판정) ③ worker 다시 켜기 ④ 팀원3에게 수치 정답셋 '요소 없음' 16행 연결 목록 전달 → `eval_tables.py` ⑤ `/compare` 목표주가 화면 확인, `compare_pairs.json` 배포 방식 결정 ⑥ `python scripts/update_status.py`
+1. **현재 단계**: 11-23 마감. 팀원4 합류일. `main`은 PR #48(`76add05`)까지. `ryu`에 PR #49(표 점검 스크립트 + 수치 정답셋 16행 재연결 + 채점 가운뎃점 보완) 병합 대기. 팀원3 탐지 정답셋 24쪽 PR #50(`feat/detection-gt-seohyun`) 올라옴
+2. **방금 한 일과 결과 (11-23)**: ① PR #45~#48 병합(정답셋 초안 50쪽, `yolo_trial.py --pages-file`, 목표주가 비교 수정, `compare_pairs.json`) ② SK하이닉스 iM 표1 행 이름 누락을 검수 API로 수정 ③ `check_table_quality.py`로 '요소 없음' 16행 재연결 → `gt_table_coverage` 30/30, `cell_accuracy` 0.592 → 0.938(빠진 49칸 모두 이름 불일치, '값 다름' 0. 41칸은 대체 모델 `gemini-3.5-flash-lite` 오독) ④ 채점 가운뎃점 통일(`9fbf027`, 예상 0.948) ⑤ 확신도 몰림 원인 정리(`detection_score` 0.92 고정, 표 0.984 / 차트 0.9733) ⑥ 팀원3 튜닝용 검색어 판정 받음(O 43/61), 팀원2 파일은 판정 빈 20·17번 재판정 목록
+3. **다음 할 일**: ① 팀장 PC `eval_tables.py` 재측정 ② PR #49 병합 ③ PR #50의 `reviewed: false` 4쪽 처리 기준 결정(OECD p.1·2 '요소아님', KDI p.11 여러 패널 차트·주석, 바이오 p.5 그림 이미지) ④ 팀원2: 튜닝용 판정 파일 + 출처 대응표, 20번 판정 기준 먼저 ⑤ 중복 의심 2쌍(넷마블 유안타 p.5, KT&G 유안타 p.10), 행 이름 누락 의심 2건 화면 확인 ⑥ 목요일 저녁 정답셋 PR(#50 + 팀원4) 병합 → `eval_crops.py` → 금요일 크롭 방식 결정
 4. **막힌 것**: 없음
-5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
+5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개와 `MetricType`을 `schemas.py`로 옮길지 ② 대체 모델 47개 재추출 여부(Claude 권장: 안 함, 발표에서 설명) ③ `evaluator.py`의 `self_consistency` 미실행 시 1.0 처리(AGENTS 5절 '적용 안 한 신호는 None'과 다름, 고치면 `PIPELINE_VERSION` 올림 대상, 발표 후 권장)
 
 ---
 
@@ -65,11 +65,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
-| **11-23 12:20** | SK하이닉스 iM 목표주가 미매칭 원인 확인 + 화면이 목표주가보다 적정주가를 먼저 집던 문제 수정 (Claude) | `frontend/app/compare/TargetPriceView.tsx`(목표주가·Target Price 줄을 먼저, 없을 때만 적정주가·주당가치) | 팀장 PC `/api/elements?target=SK하이닉스&source_org=iM증권` 응답 확인, 매칭 결과 JSON으로 함수 실행 | SK하이닉스 iM 표1(`fig-6086b1030698`)은 저장된 표에 행 이름 열이 통째로 없음(숫자만 남음, 11-18 대체 모델 캐시 응답) → 검수 API로 표 데이터 수정 예정. 화면: 넷마블·삼성전자 iM·카카오 SK·한화가 계산값(적정주가) 대신 제시 목표주가로(예: 369,407 → 370,000) | **확인 필요** |
+| **11-23 17:50** | 표 숫자 재측정 + 빠진 칸 원인 확인, 채점 이름 맞추기에 가운뎃점 통일 (Claude, 팀장 승인) | `scripts/eval_tables.py`(`norm_label`: ⋅ ・ ∙ → ·), `scripts/test_eval_tables.py`(+1건) | 팀장 PC `eval_tables.py`, Docker 밖 pytest | `gt_table_coverage` 30/30 = 1.000, `cell_accuracy` 741/790 = 0.938(빠진 49칸 모두 '칸 없음', '값 다름' 0). 원인: T24 가운뎃점 문자 차이(8칸, 이번 수정으로 맞음 → 예상 0.948), T30 '지준율'→'기준율'·T18 '발전량'→'발전력'·'링쾨빙'→'링퀴빙'·T16 행 이름 단위 분리(41칸, 원문 확인 결과 정답셋 맞음, AI 오류). 문제 표 4개 모두 대체 모델 `gemini-3.5-flash-lite` 추출분. pytest 12/12 | **확인 필요** (팀장 PC 재측정) |
+| **11-23 14:45** | T16 재연결 + T17 확인: 팀장이 상세 화면에서 `fig-6cdcce96e35f`(수소 p.33)가 정답 <표 3-1>과, `fig-aa836cb4581d`(고용동향 p.12)가 정답 표와 같은 표임을 확인 | `figindex/data/gt/table/links.csv`, 정답셋 작업 시트 '수치표_연결' 17행 | - | 같은 표 30/30. 행 이름 겹침 0.286은 표기 차이로 보임 → `eval_tables.py` 상세 CSV에서 T16 셀이 이름 불일치로 빠지는지 확인. | **확인 필요** (`eval_tables.py`) |
+| **11-23 13:10** | 팀장 PC에서 `check_table_quality.py` 실행 → 수치 정답셋 '요소 없음' 15행 재연결 (Claude, 팀장 승인) | `figindex/data/gt/table/links.csv`, 정답셋 작업 시트 '수치표_연결' F·H·I·J열(G열 링크 수식 유지, 이전 메모는 [이전 메모]로 남김) | `check_table_quality.py` | 행 이름 누락 의심 18개(캡션상 대부분 순위·번호·척도처럼 첫 열이 원래 숫자인 표, 진짜 의심은 TLB IBK p.1·LG화학 상상인 p.2 정도). 재연결 후보 16개 중 12개 점수 1.0, T17 0.915·T18 0.9·T21 0.917 → 15행 '같은 표'로 반영(29/30), T16(행 이름 겹침 0.286)은 '요소 없음' 유지 | **확인 필요** (T16·T17 사람 확인, `eval_tables.py`) |
+| **11-23 12:40** | 표 품질 점검 스크립트(읽기 전용): 행 이름 열 누락 의심 표 + 수치 정답셋 '요소 없음' 16행 재연결 후보 (Claude) | `scripts/check_table_quality.py`, `scripts/test_check_table_quality.py`(3건) | Docker 밖 pytest, 팀장 PC SK하이닉스 iM 응답(8개 표)으로 실행 | 3/3 통과, 수정 전 `fig-6086b1030698`을 누락 의심으로 잡음. 팀장 PC v2 전체 실행은 아직 | **확인 필요** |
 | **11-23 11:00** | 목표주가 매칭 전후 비교 + 화면 값 읽기 보완 (팀장 실행, Claude 분석) | `frontend/app/compare/TargetPriceView.tsx`("이름: 값" 한 칸 읽기, 단위는 행 이름 괄호 단위 아니면 "원") | `run_compare_matrix.py` 전(`d550f0d` 이전)·후, 응답으로 `findTargetPrice` 실행 | TARGET_PRICE 매칭 15 → 11. 빠진 4건(KT&G·삼양식품·코스맥스 한화, SK하이닉스 iM)은 모두 목표주가 값이 없던 표, 삼성전자 iM은 'Valuation Table'로 바뀌어 369,407원(캡션 36.9만원과 일치). 연간 29·분기 27 변화 없음. 화면 목표주가 값 9/15 → **11/11** | **PASS** |
-| **11-23 10:50** | 목표주가 근거 표 검사 연결: 행·열 이름에 목표주가 관련 이름이 없는 표는 탈락 (Claude) | `compare/matcher.py`(`has_target_price_required_labels` 호출 추가), `compare/metrics.py`(`주당가치` 추가), `compare/test_matcher_target_price.py`(4건) | Docker 밖 pytest | 4/4 통과. 코스맥스 한화 표(재무 항목만) 탈락, 메리츠·유진 유지. 팀장 PC `run_compare_matrix.py` 전후 비교는 아직 | **확인 필요** |
-| **11-23 10:40** | `/compare` 목표주가 칩 확인: 코스맥스 3개 중 메리츠·한화 "-", 유진 단위 섞임 → 화면 코드 수정 (Claude) | `frontend/app/compare/TargetPriceView.tsx` | 팀장 PC 응답 JSON(`/api/compare/company?company=코스맥스&metric=TARGET_PRICE`)으로 `findTargetPrice` 실행 | 메리츠 316,000원(`적정주당가치 (원)` 2026E), 유진 420,000원, 한화 "표에 목표주가 없음"(근거 표에 목표주가 줄 자체가 없음). `적정 시가총액`·`Target PER`은 안 잡힘 | **확인 필요** (화면) |
-| **11-23 10:30** | 잘림 13건을 YOLO와 비교할 방법 + 정답셋 분담 문서화 (Claude) | `pipeline/yolo_trial.py`(`--page`, `--pages-file`, `_old_crop`·`_yolo_crop` 그림), `pipeline/detection_gt.py`(`parse_page_spec`, `read_page_list`, `group_pages_by_doc`), `pipeline/test_detection_gt.py`, `data/gt/crop_cut_cases.txt`, `docs/roles/4_크롭.md` | Docker 밖 `pytest test_detection_gt.py`, 가짜 fitz·YOLO 모듈로 `yolo_trial.py --pages-file` 실행 | 9/9 통과, 지정 페이지 3장(범위 밖 1장 건너뜀) 그림 4종 생성 | **확인 필요** (실제 PDF·YOLO) |
 ---
 
 ## 3. 완료 이력 (Historical Summary)
@@ -170,7 +170,7 @@
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
 | **목표주가 매칭 수 변화 확인** | 팀장 | 해결(11-23) | 15 → 11, 빠진 4건은 목표주가 값 없는 표, 삼성전자 iM은 올바른 표로 바뀜. 매칭된 11건 모두 화면에 목표주가 값이 나옴 |
 | **SK하이닉스 iM 'Valuation Table' 미매칭** | 팀장 | 원인 확인(11-23) | `fig-6086b1030698`의 table_data에 행 이름 열(BPS, Target PB, 적정주가, 목표주가, 현재주가, 상승여력)이 빠지고 숫자만 남음. 매칭 엔진 문제 아님. 검수 API(`POST /api/review/fig-6086b1030698`, EDIT)로 원문대로 고침 → ReviewLog에 남음. 검수 수정은 payload만 바꾸므로 이 요소의 검색 벡터는 예전 글자 기준 |
-| **행 이름 열이 빠진 표가 더 있는지** | 파이프라인 | 열림 | 같은 증상(첫 열 값이 전부 숫자)인 표를 v2에서 찾는 읽기 전용 점검 필요. 비교·검색에서 조용히 빠지는 원인 |
+| **행 이름 열이 빠진 표가 더 있는지** | 팀장 | 도구 준비 | `python scripts/check_table_quality.py`(읽기 전용) → 첫 열 값의 75% 이상이 숫자인 표 목록 CSV. 같은 실행에서 수치 정답셋 '요소 없음' 16행의 재연결 후보(같은 문서·페이지 TABLE을 캡션 유사도·정답 행 이름 겹침으로 순위)도 CSV로 냄 → 사람이 확인 후 `links.csv` 반영 → `eval_tables.py` |
 | **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | `unit_for`가 % 아닌 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산 영향 확인 필요. 11-23: 목표주가 화면은 행 이름 괄호 단위로 우회, 비교 엔진 쪽은 그대로 |
 | **정답값 원문 대조** | 정답셋(팀원3) | 열림 | 원문 PDF로 표 2~3개 확인 |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (Docker 밖 실행 시) |
