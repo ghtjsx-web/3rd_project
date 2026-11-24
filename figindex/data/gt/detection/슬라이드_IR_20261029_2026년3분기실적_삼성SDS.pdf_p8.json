@@ -1,15 +1,15 @@
 {
   "doc_name": "슬라이드_IR_20261029_2026년3분기실적_삼성SDS.pdf",
   "page_number": 8,
-  "reviewed": false,
+  "reviewed": true,
   "memo": "",
   "elements": [
     {
       "element_type": "CHART",
       "bbox": [
         0.5373,
-        0.38,
-        0.9087,
+        0.3650,
+        0.9477,
         0.8653
       ]
     },
