@@ -55,6 +55,14 @@ def test_whitespace_in_labels_is_ignored():
     assert score_table([gt("EPS(원)", "2024", 8998)], table)[0]["result"] == "맞음"
 
 
+
+def test_middle_dot_variants_are_same_label():
+    # 11-23 T24(스마트농업 <표 9>): 정답 "⋅"(U+22C5), 카드 "·"(U+00B7). 같은 글자로 본다
+    table = {"columns": ["구분", "평균 기준"], "rows": [{"구분": "Ⅰ 고중요도·고확신도", "평균 기준": 12}]}
+    assert score_table([gt("Ⅰ 고중요도⋅고확신도", "평균 기준", 12)], table)[0]["result"] == "맞음"
+    # 글자가 다르면 여전히 칸 없음 (T30 '지준율'/'기준율' 같은 오독은 그대로 틀림)
+    assert score_table([gt("Ⅰ 고중요도⋅저확신도", "평균 기준", 12)], table)[0]["result"] == "칸 없음"
+
 def test_transposed_table():
     table = {"columns": ["연도", "매출액"], "rows": [{"연도": "2024", "매출액": 9411.9}]}
     scored = score_table([gt("매출액", "2024", 9411.9)], table)

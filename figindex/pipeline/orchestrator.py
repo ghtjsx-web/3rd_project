@@ -46,6 +46,10 @@ except ImportError:
     from pipeline.element_match import matches_existing
 
 
+# 규칙 크롭은 탐지 확률이 없어 고정값을 쓴다 (YOLO 크롭은 모델의 detection_score를 그대로 씀)
+RULE_DETECTION_SCORE = 0.92
+
+
 DOC_TYPE_CODE_MAP: Dict[str, str] = {
     "RPT": "REPORT",
     "PUB": "PUBLIC_REPORT",
@@ -849,7 +853,7 @@ class ExtractionPipelineOrchestrator:
                     toc_pages_skipped.append(p_idx)
                     print(f"    [P.{p_idx}] 목차 페이지라 건너뜀")
                     continue
-                candidates = self.cropper.detect_candidate_boxes(page)
+                candidates, page_img = self.cropper.detect_page_candidates(doc, p_idx)
                 if existing_bboxes is not None:
                     old_boxes = existing_bboxes.get(p_idx, [])
                     new_candidates = [
@@ -861,7 +865,8 @@ class ExtractionPipelineOrchestrator:
                 if not candidates:
                     continue
 
-                page_img = self.cropper.render_page(doc, p_idx)
+                if page_img is None:
+                    page_img = self.cropper.render_page(doc, p_idx)
 
                 for cand in candidates:
                     if extracted_count >= max_elements_per_pdf:
@@ -883,7 +888,7 @@ class ExtractionPipelineOrchestrator:
                         doc_name=doc_name,
                         page_number=p_idx,
                         doc_metadata=doc_metadata,
-                        detection_score=0.92,
+                        detection_score=cand.get("detection_score", RULE_DETECTION_SCORE),
                         doc_id=document.doc_id
                     )
 

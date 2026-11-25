@@ -6,11 +6,12 @@
 
 ## 0. 지금 상황 (Current Status)
 
-1. **현재 단계**: 11-23. 팀원4 합류일. 11-22에 빠진 요소 307개를 v2에 추가(618 → 925)했고 탐지 정답셋 초안 50쪽을 만들었으나, 이 현황서에는 반영되지 않았던 것을 이번에 바로잡음. `main`은 PR #45로 11-22 작업까지 반영
-2. **방금 한 일과 결과 (11-23)**: ① 팀장 PC 테스트 pipeline 245 통과, scripts 1건 경로 문제 수정(`056ed45`) → PR #45 병합 ② `yolo_trial.py`에 `--page`/`--pages-file` 추가: 지정 페이지에서 지금 방식과 YOLO(캡션·각주 병합)의 실제 크롭 영역을 같은 여백으로 그림 → 잘림 13건(결정 30 ②) 확인용. 목록 `figindex/data/gt/crop_cut_cases.txt` ③ 역할 문서 `4_크롭.md` 2·4단계 갱신(초안 다시 만들지 말 것, 그림 zip, 26/24 분담)
-3. **다음 할 일**: ① 팀장: 초안 그림 50장 `detection_images.zip`을 드라이브 FigIndex_data에 올리기 ② 이 브랜치 PR 병합 후 팀 채팅 공지(새 데이터 zip 교체, pull·build, 정답셋 분담, 검색어 재판정) ③ worker 다시 켜기 ④ 팀원3에게 수치 정답셋 '요소 없음' 16행 연결 목록 전달 → `eval_tables.py` ⑤ `/compare` 목표주가 화면 확인, `compare_pairs.json` 배포 방식 결정 ⑥ `python scripts/update_status.py`
-4. **막힌 것**: 없음
-5. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개(`MatchedDocComparison`, `AlignedComparisonRow`, `CompareApiResponse`)와 `MetricType`을 `schemas.py`로 옮길지
+1. **현재 단계**: 11-24 마감. **팀장은 11-25(수)부터 부재**. `main`은 PR #54(`276a47a`, YOLO 크롭 연결 + 겹치는 박스 합치기)까지. `ryu`에 `PIPELINE_VERSION` 0.2.0 PR 대기. 팀원3 탐지 정답셋 PR #50은 `reviewed: false` 4쪽 수정 대기(팀원3 목요일 복귀)
+2. **방금 한 일과 결과 (11-24)**: ① PR #49·#51·#52 병합 ② 표 재측정(팀장 PC): `cell_accuracy` **749/790 = 0.948**(목표 0.95, 남은 41칸은 대체 모델 이름 오독 T16·T18·T30), `gt_table_coverage` 30/30, `table_valid_rate` 0.992 ③ 탐지 정답셋 추가 기준 공지(요소 없는 쪽 `[]`, 패널 여러 개는 캡션 단위 1개, 사진 노이즈, 상자·화살표 개념도는 DIAGRAM, 본문·각주 줄 제외) ④ 팀원4 잘림 13건: YOLO 해결 12 + 부분 1. LG화학 상상인 p.2 행 이름 누락은 크롭에서 표 왼쪽이 잘린 것 ⑤ `eval_crops.py`(팀원4 PC, 26쪽·61요소, 준비 실행 후): 지금 방식 `crop_recall` **0.361** 10쪽 9.0초, YOLO **0.951** 10쪽 **14.7초** ⑥ **YOLO 연결**(PR #53): `cropper.detect_page_candidates()` + `CROP_METHOD`(기본 `yolo`, 실패 시 규칙 방식), `orchestrator`가 YOLO `detection_score`를 그대로 씀 ⑦ **팀장 PC 시험 업로드**(DB손해보험 리포트, `figindex_test_upload`): worker `크롭 yolo` 확인, 1쪽 표 5·차트 1 크롭, 확신도 69.0~99.5%로 퍼짐(예전 0.984·0.9733 몰림 해소), 낮은 3개 PENDING_REVIEW. **같은 표가 두 번 크롭됨** → `detection_gt.merge_duplicate_mains`(70% 이상 겹치면 하나로 합침) 추가, 테스트 1건(pipeline 253 통과)
+3. **크롭 방식 결정 (팀장, 11-24)**: **YOLO 확정**(결정 30 세 기준 모두 통과). 기존 925개는 재색인 안 함(새 업로드부터 YOLO). 알려진 약점: YOLO가 사진(저자 사진·시편 사진)을 figure로 잡아 CHART 후보로 넘김, 모식도 유형은 Vision LLM이 정함 — `crop_recall`은 쓸데없는 박스를 세지 않아 점수에 안 나타남
+4. **다음 할 일 (팀원)**: ① 팀원4: 시험 컬렉션(worker 기본 `figindex_test_upload`)에 PDF 1건 올려 크롭 그림 확인, 사진 카드·유형 보고 ② 팀원3(목요일): PR #50 4쪽 수정 → 병합 → 50쪽으로 `eval_crops.py` 최종 숫자 ③ 발표 자료: PPT 숫자(`cell_accuracy` 0.948, `crop_recall` 0.36 → 0.95, 목표주가 매칭 15 → 11), 시연 영상, 느낀 점 ④ (선택) 팀원2·3 검색어 판정
+5. **막힌 것**: 팀장 부재 중 PR 병합 권한·대리 미정. `PIPELINE_VERSION`은 팀장 요청으로 0.2.0(결정 32). `scripts/add_missing_elements.py`처럼 기존 박스와 겹침으로 '빠진 요소'를 찾는 도구는 규칙 방식 박스 기준이라, YOLO로 돌리면 같은 요소를 새것으로 볼 수 있음 → 기존 데이터에 쓸 때는 `CROP_METHOD=rule`
+6. **팀장 결정 대기**: ① `main.py`의 비교 응답 모델 3개와 `MetricType`을 `schemas.py`로 옮길지 ② 대체 모델 47개 재추출 여부(Claude 권장: 안 함, 발표에서 설명) ③ `evaluator.py`의 `self_consistency` 미실행 시 1.0 처리(AGENTS 5절 '적용 안 한 신호는 None'과 다름, 고치면 `PIPELINE_VERSION` 올림 대상, 발표 후 권장)
 
 ---
 
@@ -65,11 +66,11 @@
 
 | 시각 | 작업 요청 | 바꾼 파일 | 실행 명령 | 결과 숫자 | 판정 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
+| **11-23 17:50** | 표 숫자 재측정 + 빠진 칸 원인 확인, 채점 이름 맞추기에 가운뎃점 통일 (Claude, 팀장 승인) | `scripts/eval_tables.py`(`norm_label`: ⋅ ・ ∙ → ·), `scripts/test_eval_tables.py`(+1건) | 팀장 PC `eval_tables.py`, Docker 밖 pytest | `gt_table_coverage` 30/30 = 1.000, `cell_accuracy` 741/790 = 0.938(빠진 49칸 모두 '칸 없음', '값 다름' 0). 원인: T24 가운뎃점 문자 차이(8칸, 이번 수정으로 맞음 → 예상 0.948), T30 '지준율'→'기준율'·T18 '발전량'→'발전력'·'링쾨빙'→'링퀴빙'·T16 행 이름 단위 분리(41칸, 원문 확인 결과 정답셋 맞음, AI 오류). 문제 표 4개 모두 대체 모델 `gemini-3.5-flash-lite` 추출분. pytest 12/12 | **확인 필요** (팀장 PC 재측정) |
+| **11-23 14:45** | T16 재연결 + T17 확인: 팀장이 상세 화면에서 `fig-6cdcce96e35f`(수소 p.33)가 정답 <표 3-1>과, `fig-aa836cb4581d`(고용동향 p.12)가 정답 표와 같은 표임을 확인 | `figindex/data/gt/table/links.csv`, 정답셋 작업 시트 '수치표_연결' 17행 | - | 같은 표 30/30. 행 이름 겹침 0.286은 표기 차이로 보임 → `eval_tables.py` 상세 CSV에서 T16 셀이 이름 불일치로 빠지는지 확인. | **확인 필요** (`eval_tables.py`) |
+| **11-23 13:10** | 팀장 PC에서 `check_table_quality.py` 실행 → 수치 정답셋 '요소 없음' 15행 재연결 (Claude, 팀장 승인) | `figindex/data/gt/table/links.csv`, 정답셋 작업 시트 '수치표_연결' F·H·I·J열(G열 링크 수식 유지, 이전 메모는 [이전 메모]로 남김) | `check_table_quality.py` | 행 이름 누락 의심 18개(캡션상 대부분 순위·번호·척도처럼 첫 열이 원래 숫자인 표, 진짜 의심은 TLB IBK p.1·LG화학 상상인 p.2 정도). 재연결 후보 16개 중 12개 점수 1.0, T17 0.915·T18 0.9·T21 0.917 → 15행 '같은 표'로 반영(29/30), T16(행 이름 겹침 0.286)은 '요소 없음' 유지 | **확인 필요** (T16·T17 사람 확인, `eval_tables.py`) |
+| **11-23 12:40** | 표 품질 점검 스크립트(읽기 전용): 행 이름 열 누락 의심 표 + 수치 정답셋 '요소 없음' 16행 재연결 후보 (Claude) | `scripts/check_table_quality.py`, `scripts/test_check_table_quality.py`(3건) | Docker 밖 pytest, 팀장 PC SK하이닉스 iM 응답(8개 표)으로 실행 | 3/3 통과, 수정 전 `fig-6086b1030698`을 누락 의심으로 잡음. 팀장 PC v2 전체 실행은 아직 | **확인 필요** |
 | **11-23 11:00** | 목표주가 매칭 전후 비교 + 화면 값 읽기 보완 (팀장 실행, Claude 분석) | `frontend/app/compare/TargetPriceView.tsx`("이름: 값" 한 칸 읽기, 단위는 행 이름 괄호 단위 아니면 "원") | `run_compare_matrix.py` 전(`d550f0d` 이전)·후, 응답으로 `findTargetPrice` 실행 | TARGET_PRICE 매칭 15 → 11. 빠진 4건(KT&G·삼양식품·코스맥스 한화, SK하이닉스 iM)은 모두 목표주가 값이 없던 표, 삼성전자 iM은 'Valuation Table'로 바뀌어 369,407원(캡션 36.9만원과 일치). 연간 29·분기 27 변화 없음. 화면 목표주가 값 9/15 → **11/11** | **PASS** |
-| **11-23 10:50** | 목표주가 근거 표 검사 연결: 행·열 이름에 목표주가 관련 이름이 없는 표는 탈락 (Claude) | `compare/matcher.py`(`has_target_price_required_labels` 호출 추가), `compare/metrics.py`(`주당가치` 추가), `compare/test_matcher_target_price.py`(4건) | Docker 밖 pytest | 4/4 통과. 코스맥스 한화 표(재무 항목만) 탈락, 메리츠·유진 유지. 팀장 PC `run_compare_matrix.py` 전후 비교는 아직 | **확인 필요** |
-| **11-23 10:40** | `/compare` 목표주가 칩 확인: 코스맥스 3개 중 메리츠·한화 "-", 유진 단위 섞임 → 화면 코드 수정 (Claude) | `frontend/app/compare/TargetPriceView.tsx` | 팀장 PC 응답 JSON(`/api/compare/company?company=코스맥스&metric=TARGET_PRICE`)으로 `findTargetPrice` 실행 | 메리츠 316,000원(`적정주당가치 (원)` 2026E), 유진 420,000원, 한화 "표에 목표주가 없음"(근거 표에 목표주가 줄 자체가 없음). `적정 시가총액`·`Target PER`은 안 잡힘 | **확인 필요** (화면) |
-| **11-23 10:30** | 잘림 13건을 YOLO와 비교할 방법 + 정답셋 분담 문서화 (Claude) | `pipeline/yolo_trial.py`(`--page`, `--pages-file`, `_old_crop`·`_yolo_crop` 그림), `pipeline/detection_gt.py`(`parse_page_spec`, `read_page_list`, `group_pages_by_doc`), `pipeline/test_detection_gt.py`, `data/gt/crop_cut_cases.txt`, `docs/roles/4_크롭.md` | Docker 밖 `pytest test_detection_gt.py`, 가짜 fitz·YOLO 모듈로 `yolo_trial.py --pages-file` 실행 | 9/9 통과, 지정 페이지 3장(범위 밖 1장 건너뜀) 그림 4종 생성 | **확인 필요** (실제 PDF·YOLO) |
-| **11-22 저녁** | 빠진 요소 추가: 미리보기 → 시험 컬렉션 `figindex_test_addmissing` → v2 반영 (팀장+Claude) | — (실행) | `add_missing_elements.py --from-gt --apply`, 재자원화 `--max-elements 50`, `promote_test_to_service.py --new-only --apply` | 추가 307(260+47), 중복 의심 0, v2 618 → 925, 정답셋 16쪽 모두 카드 생김 | **PASS** |
 ---
 
 ## 3. 완료 이력 (Historical Summary)
@@ -138,6 +139,7 @@
 29. **튜닝용 검색어 판정은 두 명, 출처 가리고 (11-20)**: 원인 분석에 쓰지 않은 '기업+지표+연도' 검색어 10개 추가. 기준을 먼저 적고, A+B·B만 결과를 섞어 출처를 가린 채 팀원2·팀원3이 각자 판정, 판정이 갈린 건수도 보고.
 30. **크롭 방식 결정 기준 (11-20)**: ① 10페이지 크롭 15초 이내 ② 잘림 13건 중 9건 이상 해결 ③ `crop_recall`이 지금 방식 이상, 셋 다 넘으면 YOLO 연결. 아니면 지금 방식 유지 + 규칙 2개 수정(제목 박스를 제목 줄 실제 좌표로, 주석 접두어에 "Note"·"주."·"출처"·"*" 추가). `crop_recall`은 용어집 정의(IoU 0.5) 그대로, 잘림 해결 수는 보고서에만.
 31. **기존 벡터 갱신은 재색인이 아니라 벡터만 교체 (11-20)**: `element_id`·payload를 지키기 위해 `update_vectors`만 쓴다. 되돌리기 기준은 `data/qdrant` 폴더 복사(Qdrant 스냅샷은 컨테이너 안에만 남음).
+32. **크롭 방식 YOLO 확정 + PIPELINE_VERSION 0.1.3 → 0.2.0 (11-24, 팀장)**: 결정 30 세 기준 통과(`crop_recall` 0.361 → 0.951, 10쪽 14.7초, 잘림 12+부분 1). 새 업로드부터 DocLayout-YOLO 크롭(`CROP_METHOD`, 실패 시 규칙 방식), YOLO `detection_score` 사용, 겹치는 본 박스 합치기. 기존 925개(0.1.3 이하)는 재색인하지 않음 → `pipeline_version`으로 구분. 기존 데이터에 '빠진 요소' 도구를 쓸 때는 `CROP_METHOD=rule`
 
 ---
 
@@ -169,7 +171,8 @@
 | **잘못된 크롭 (KT&G 유안타 p.10)** | 크롭 | 열림 | 같은 캡션에 다른 크롭 박스 |
 | **캡션 오배정 (HeritageJ p.2)** | 정답셋 | 열림 | 같은 캡션이 2개 요소에 |
 | **목표주가 매칭 수 변화 확인** | 팀장 | 해결(11-23) | 15 → 11, 빠진 4건은 목표주가 값 없는 표, 삼성전자 iM은 올바른 표로 바뀜. 매칭된 11건 모두 화면에 목표주가 값이 나옴 |
-| **SK하이닉스 iM 'Valuation Table' 미매칭** | 비교 엔진 | 열림 | 같은 형식의 삼성전자 iM 표1은 매칭됐는데 SK하이닉스 iM 표1은 안 됨. 표 행·열 이름에 목표주가 관련 이름이 없게 읽혔을 가능성 → 요소 상세에서 표 내용 확인 |
+| **SK하이닉스 iM 'Valuation Table' 미매칭** | 팀장 | 원인 확인(11-23) | `fig-6086b1030698`의 table_data에 행 이름 열(BPS, Target PB, 적정주가, 목표주가, 현재주가, 상승여력)이 빠지고 숫자만 남음. 매칭 엔진 문제 아님. 검수 API(`POST /api/review/fig-6086b1030698`, EDIT)로 원문대로 고침 → ReviewLog에 남음. 검수 수정은 payload만 바꾸므로 이 요소의 검색 벡터는 예전 글자 기준 |
+| **행 이름 열이 빠진 표가 더 있는지** | 팀장 | 도구 준비 | `python scripts/check_table_quality.py`(읽기 전용) → 첫 열 값의 75% 이상이 숫자인 표 목록 CSV. 같은 실행에서 수치 정답셋 '요소 없음' 16행의 재연결 후보(같은 문서·페이지 TABLE을 캡션 유사도·정답 행 이름 겹침으로 순위)도 CSV로 냄 → 사람이 확인 후 `links.csv` 반영 → `eval_tables.py` |
 | **섞인 단위 문자열 (`unit: '십억원, %'`)** | 파이프라인 | 열림 | `unit_for`가 % 아닌 행에 '십억원, %'를 돌려줌. 비교 엔진 단위 환산 영향 확인 필요. 11-23: 목표주가 화면은 행 이름 괄호 단위로 우회, 비교 엔진 쪽은 그대로 |
 | **정답값 원문 대조** | 정답셋(팀원3) | 열림 | 원문 PDF로 표 2~3개 확인 |
 | **check_state 테스트 2건 실패** | 인프라 | 열림 | `test_check_state_a2.py`의 legacy_allowed_files 2건 (Docker 밖 실행 시) |

@@ -33,14 +33,12 @@ from typing import Any, Dict, List, Tuple
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw
 
-from cropper import PDFCropper
+from cropper import YOLO_FILE, YOLO_REPO, PDFCropper
 from detection_gt import choose_docs, combine_drafts, gt_file_name, pick_pages, yolo_boxes_to_elements
 from pdf_text import is_toc_page
 from shared.coords import clip_bbox, from_legacy_yxyx, norm_to_px, px_to_norm
 from shared.schemas import ElementType
 
-YOLO_REPO = "juliozhao/DocLayout-YOLO-DocStructBench"           # yolo_trial.py와 같은 체크포인트
-YOLO_FILE = "doclayout_yolo_docstructbench_imgsz1024.pt"
 BOX_COLOR = (220, 38, 38)
 GRID_COLOR = (148, 163, 184)
 GRID_STEP = 0.1  # 박스를 고치거나 추가할 때 좌표를 읽기 쉽게 0.1 간격 눈금

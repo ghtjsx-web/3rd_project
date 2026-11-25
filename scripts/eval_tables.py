@@ -67,11 +67,13 @@ def is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-_QUOTES = str.maketrans({"’": "'", "‘": "'", "′": "'", "`": "'", "“": '"', "”": '"', "″": '"'})
+_QUOTES = str.maketrans({"’": "'", "‘": "'", "′": "'", "`": "'", "“": '"', "”": '"', "″": '"',
+                         # 가운뎃점 모양 통일 (⋅ U+22C5, ・ U+30FB, ∙ U+2219 → · U+00B7)
+                         "⋅": "·", "・": "·", "∙": "·"})
 
 
 def norm_label(text: Any) -> str:
-    """행 라벨·열 이름 비교용: NFKC 정규화, 따옴표 모양 통일, 공백 제거, 소문자."""
+    """행 라벨·열 이름 비교용: NFKC 정규화, 따옴표·가운뎃점 모양 통일, 공백 제거, 소문자."""
     if text is None:
         return ""
     normalized = unicodedata.normalize("NFKC", str(text)).translate(_QUOTES)
